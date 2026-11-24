@@ -152,6 +152,7 @@ async function storedPages(sw) {
     headless: true,
     args: [`--disable-extensions-except=${EXT}`, `--load-extension=${EXT}`],
     viewport: { width: 1280, height: 860 },
+    deviceScaleFactor: Number(process.env.E2E_SCALE) || 1, // E2E_SCALE=2 for sharper screenshots
     acceptDownloads: true,
   });
   const errors = [];
