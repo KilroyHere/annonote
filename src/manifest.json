@@ -1,0 +1,53 @@
+{
+  "manifest_version": 3,
+  "name": "Gloss",
+  "description": "Highlight and annotate any web page. Notes stay on your computer and export to Markdown or Notion.",
+  "version": "0.0.0",
+  "minimum_chrome_version": "120",
+  "icons": {
+    "16": "icons/icon-16.png",
+    "32": "icons/icon-32.png",
+    "48": "icons/icon-48.png",
+    "128": "icons/icon-128.png"
+  },
+  "action": {
+    "default_title": "Gloss",
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icons/icon-16.png",
+      "32": "icons/icon-32.png"
+    }
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["http://*/*", "https://*/*", "file:///*"],
+      "js": ["content.js"],
+      "css": ["highlights.css"],
+      "run_at": "document_idle",
+      "all_frames": false
+    }
+  ],
+  "permissions": ["storage", "unlimitedStorage"],
+  "host_permissions": ["https://api.notion.com/*", "https://api.hypothes.is/*"],
+  "commands": {
+    "highlight-selection": {
+      "suggested_key": { "default": "Alt+Shift+H" },
+      "description": "Highlight the selected text"
+    },
+    "annotate-selection": {
+      "suggested_key": { "default": "Alt+Shift+N" },
+      "description": "Highlight the selected text and add a note"
+    },
+    "toggle-sidebar": {
+      "suggested_key": { "default": "Alt+Shift+S" },
+      "description": "Show or hide the notes sidebar"
+    }
+  },
+  "options_ui": {
+    "page": "library.html#settings",
+    "open_in_tab": true
+  }
+}

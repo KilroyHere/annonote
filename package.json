@@ -1,0 +1,28 @@
+{
+  "name": "gloss",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Highlight and annotate any web page, keep notes locally, export to Markdown and Notion.",
+  "type": "module",
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "watch": "node scripts/build.mjs --watch",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:e2e": "node scripts/build.mjs --e2e && node tests/e2e/run.cjs",
+    "package": "node scripts/build.mjs && node scripts/package.mjs"
+  },
+  "license": "UNLICENSED",
+  "dependencies": {
+    "approx-string-match": "^2.0.3",
+    "preact": "^11.2.0"
+  },
+  "devDependencies": {
+    "@types/chrome": "^0.3.7",
+    "@types/node": "^26.6.6",
+    "esbuild": "^0.28.2",
+    "jsdom": "^31.0.1",
+    "typescript": "^7.0.2",
+    "vitest": "^5.1.1"
+  }
+}

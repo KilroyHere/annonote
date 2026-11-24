@@ -1,0 +1,43 @@
+html {
+  color-scheme: light dark;
+}
+
+body {
+  margin: 0;
+  background: var(--g-bg);
+}
+
+#app {
+  width: 300px;
+}
+
+.p-wrap {
+  padding: 14px 16px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.p-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 15px;
+}
+
+.p-status {
+  margin: 0;
+}
+
+.p-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.p-actions .g-btn {
+  flex: 1;
+}
+
+.p-hint {
+  margin: 0;
+}
