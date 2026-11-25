@@ -13,7 +13,7 @@ interface Block {
   parent: string;
 }
 
-/** A small in-memory stand-in for the parts of the Notion API that Gloss uses. */
+/** A small in-memory stand-in for the parts of the Notion API that Annonote uses. */
 class FakeNotion {
   db = { properties: { Name: { type: 'title' } } as Record<string, { type: string }>, title: [{ plain_text: 'Reading' }] };
   pages = new Map<string, { archived: boolean; properties: unknown; children: string[]; database: string }>();

@@ -3,7 +3,7 @@ import { COLORS, type Color } from '../shared/types';
 /**
  * Paints highlights with the CSS Custom Highlight API. Unlike wrapping text in
  * <mark> elements, this never changes the page's DOM, so it cannot break the
- * page's own scripts or layout. Styles for ::highlight(gloss-*) live in highlights.css.
+ * page's own scripts or layout. Styles for ::highlight(annonote-*) live in highlights.css.
  */
 export class Highlighter {
   private readonly ranges = new Map<string, { range: Range; color: Color }>();
@@ -54,16 +54,16 @@ export class Highlighter {
     if (typeof CSS === 'undefined' || !('highlights' in CSS)) return;
     for (const color of COLORS) {
       const ranges = [...this.ranges.values()].filter((r) => r.color === color).map((r) => r.range);
-      if (ranges.length) CSS.highlights.set(`gloss-${color}`, new Highlight(...ranges));
-      else CSS.highlights.delete(`gloss-${color}`);
+      if (ranges.length) CSS.highlights.set(`annonote-${color}`, new Highlight(...ranges));
+      else CSS.highlights.delete(`annonote-${color}`);
     }
     const active = this.active ? this.ranges.get(this.active) : undefined;
     if (active) {
       const h = new Highlight(active.range);
       h.priority = 10;
-      CSS.highlights.set('gloss-active', h);
+      CSS.highlights.set('annonote-active', h);
     } else {
-      CSS.highlights.delete('gloss-active');
+      CSS.highlights.delete('annonote-active');
     }
   }
 

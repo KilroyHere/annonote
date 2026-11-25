@@ -38,7 +38,7 @@ function Popup() {
     <div class="p-wrap">
       <header class="p-head">
         <Logo size={24} />
-        <strong>Gloss</strong>
+        <strong>Annonote</strong>
       </header>
       {state.kind === 'ready' && (
         <p class="p-status">
@@ -51,7 +51,7 @@ function Popup() {
       )}
       {state.kind === 'unsupported' && (
         <p class="p-status g-muted">
-          Gloss can't run on this page. Browser pages, the Chrome Web Store and PDFs aren't supported yet. If you just installed Gloss,
+          Annonote can't run on this page. Browser pages, the Chrome Web Store and PDFs aren't supported yet. If you just installed Annonote,
           reload the page.
         </p>
       )}

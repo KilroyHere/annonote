@@ -1,4 +1,4 @@
-# Gloss
+# Annonote
 
 A browser extension for highlighting and annotating any web page. Your notes stay on your computer
 and export cleanly to Markdown (Obsidian, any editor) and Notion.
@@ -19,7 +19,7 @@ and export cleanly to Markdown (Obsidian, any editor) and Notion.
   - **Notion**: each page becomes a row in a database you choose; highlights become colored quote
     blocks with your notes nested underneath. Sending again updates only what changed.
   - **JSON backup**: a W3C `AnnotationCollection` you can restore from.
-- **Import** a Gloss backup or your **Hypothesis** annotations (via the API or an exported JSON file).
+- **Import** an Annonote backup or your **Hypothesis** annotations (via the API or an exported JSON file).
 
 ## Install (developer mode)
 
@@ -34,9 +34,9 @@ npm run build
 ```
 
 Then open `chrome://extensions`, switch on **Developer mode**, click **Load unpacked**, and choose the
-`dist/` folder. Pages that were already open need a reload before Gloss works on them.
+`dist/` folder. Pages that were already open need a reload before Annonote works on them.
 
-To get a zip instead (for sharing or the Chrome Web Store): `npm run package` → `release/gloss-<version>.zip`.
+To get a zip instead (for sharing or the Chrome Web Store): `npm run package` → `release/annonote-<version>.zip`.
 
 ## Using it
 
@@ -48,15 +48,15 @@ To get a zip instead (for sharing or the Chrome Web Store): `npm run package` �
 | Library | **Open library** in the sidebar or popup |
 | Change shortcuts | `chrome://extensions/shortcuts` |
 
-To use Gloss on local files (`file://`), turn on **Allow access to file URLs** in the extension's details.
+To use Annonote on local files (`file://`), turn on **Allow access to file URLs** in the extension's details.
 
 ### Connecting Notion
 
 1. Create an internal integration at <https://www.notion.so/my-integrations> and copy its secret.
 2. In Notion, open (or create) a database, then **••• → Connections** and add the integration.
-3. In the Gloss library → **Settings**, paste the secret and the database link, and click **Connect**.
+3. In the Annonote library → **Settings**, paste the secret and the database link, and click **Connect**.
 
-Gloss adds `URL`, `Tags` and `Saved` columns if the database doesn't have them. It remembers which Notion
+Annonote adds `URL`, `Tags` and `Saved` columns if the database doesn't have them. It remembers which Notion
 blocks belong to which highlight, so re-sending a page rewrites only edited highlights, removes deleted ones and
 inserts new ones in page order. If you delete the Notion page, the next send creates a new one.
 
@@ -83,7 +83,7 @@ src/
 also matched by its `<link rel="canonical">` or DOI, so the same article on a mirror or AMP page shows your highlights.
 
 **Finding a highlight again.** Each highlight stores the exact quote with 32 characters of context on each side,
-plus its character offsets. When the page loads, Gloss tries the stored offsets first, then exact matches
+plus its character offsets. When the page loads, Annonote tries the stored offsets first, then exact matches
 of the quote (using the context to choose between duplicates), then approximate matches that allow up
 to 25% of the quote to differ. It retries whenever the page's content changes, which covers articles that
 load after the page.

@@ -56,7 +56,7 @@ async function syncToNotion(pageKey: string): Promise<{ url?: string }> {
   const settings = await db.getSettings();
   const databaseId = parseDatabaseId(settings.notionDatabaseId);
   if (!settings.notionToken || !databaseId) {
-    throw new Error('Connect Notion first: open the Gloss library → Settings.');
+    throw new Error('Connect Notion first: open the Annonote library → Settings.');
   }
   const page = await db.getPage(pageKey);
   if (!page) throw new Error('Nothing saved for this page yet.');

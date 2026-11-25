@@ -119,7 +119,7 @@ describe('createZip', () => {
       { name: 'Notes.md', data: '# Hello\n' },
       { name: 'Ünïcödé (2).md', data: 'x'.repeat(5000) },
     ]);
-    const dir = mkdtempSync(join(tmpdir(), 'gloss-zip-'));
+    const dir = mkdtempSync(join(tmpdir(), 'annonote-zip-'));
     const file = join(dir, 'test.zip');
     writeFileSync(file, zip);
     let out: string;
@@ -140,7 +140,7 @@ describe('backup', () => {
     expect(backup.type).toBe('AnnotationCollection');
     expect(backup.items[0].target.selector[0].type).toBe('TextQuoteSelector');
     const { source, pages } = parseImport(backup);
-    expect(source).toBe('gloss');
+    expect(source).toBe('annonote');
     expect(pages).toHaveLength(1);
     const restored = pages[0]!;
     expect(restored.title).toBe(page.title);

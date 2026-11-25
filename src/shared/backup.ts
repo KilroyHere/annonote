@@ -13,8 +13,8 @@ const VERSION = typeof __VERSION__ === 'string' ? __VERSION__ : 'dev';
 
 /**
  * The backup file is a W3C Web Annotation `AnnotationCollection`
- * (https://www.w3.org/TR/annotation-model/). Gloss-specific fields that the
- * standard has no place for live under a `gloss` key so a restore loses nothing.
+ * (https://www.w3.org/TR/annotation-model/). Annonote-specific fields that the
+ * standard has no place for live under a `annonote` key so a restore loses nothing.
  */
 export interface BackupFile {
   '@context': string;
@@ -23,7 +23,7 @@ export interface BackupFile {
   generated: string;
   total: number;
   items: W3CAnnotation[];
-  gloss: { format: 1; pages: Omit<Page, 'annotations'>[] };
+  annonote: { format: 1; pages: Omit<Page, 'annotations'>[] };
 }
 
 interface TextualBody {
@@ -42,7 +42,7 @@ interface W3CAnnotation {
   modified: string;
   body: TextualBody[];
   target: { source: string; selector: Selector[] };
-  gloss: { pageKey: string; color: Color; text?: string };
+  annonote: { pageKey: string; color: Color; text?: string };
 }
 
 export function toBackup(pages: Page[]): BackupFile {
@@ -60,18 +60,18 @@ export function toBackup(pages: Page[]): BackupFile {
         modified: a.updated,
         body,
         target: { source: page.url, selector: a.selectors },
-        gloss: { pageKey: page.key, color: a.color, ...(a.text ? { text: a.text } : {}) },
+        annonote: { pageKey: page.key, color: a.color, ...(a.text ? { text: a.text } : {}) },
       });
     }
   }
   return {
     '@context': 'http://www.w3.org/ns/anno.jsonld',
     type: 'AnnotationCollection',
-    generator: { name: 'Gloss', version: VERSION },
+    generator: { name: 'Annonote', version: VERSION },
     generated: nowIso(),
     total: items.length,
     items,
-    gloss: { format: 1, pages: pages.map(({ annotations: _annotations, ...meta }) => meta) },
+    annonote: { format: 1, pages: pages.map(({ annotations: _annotations, ...meta }) => meta) },
   };
 }
 
@@ -110,10 +110,10 @@ function emptyPage(key: string, url: string, title: string, created: string): Pa
   return { key, url, title, created, updated: created, pageNote: '', tags: [], annotations: [] };
 }
 
-function fromGlossBackup(file: Record<string, unknown>): Page[] {
+function fromAnnonoteBackup(file: Record<string, unknown>): Page[] {
   const pages = new Map<string, Page>();
-  const glossMeta = isObject(file.gloss) && Array.isArray(file.gloss.pages) ? file.gloss.pages : [];
-  for (const raw of glossMeta) {
+  const annonoteMeta = isObject(file.annonote) && Array.isArray(file.annonote.pages) ? file.annonote.pages : [];
+  for (const raw of annonoteMeta) {
     if (!isObject(raw) || typeof raw.key !== 'string' || typeof raw.url !== 'string' || !isPageUrl(raw.url)) continue;
     const created = str(raw.created, nowIso());
     pages.set(raw.key, {
@@ -136,7 +136,7 @@ function fromGlossBackup(file: Record<string, unknown>): Page[] {
     const selectors = cleanSelectors(target.selector);
     if (!selectors.some((s) => s.type === 'TextQuoteSelector')) continue;
     const source = str(target.source);
-    const extra = isObject(item.gloss) ? item.gloss : {};
+    const extra = isObject(item.annonote) ? item.annonote : {};
     const key = str(extra.pageKey) || normalizeUrl(source);
     if (!key) continue;
     const created = str(item.created, nowIso());
@@ -207,16 +207,16 @@ export function fromHypothesis(rows: unknown[]): Page[] {
   return [...pages.values()];
 }
 
-export type ImportSource = 'gloss' | 'hypothesis';
+export type ImportSource = 'annonote' | 'hypothesis';
 
 /** Detects the format of an imported JSON file and converts it to pages. */
 export function parseImport(json: unknown): { source: ImportSource; pages: Page[] } {
   if (isObject(json) && json.type === 'AnnotationCollection') {
-    return { source: 'gloss', pages: fromGlossBackup(json) };
+    return { source: 'annonote', pages: fromAnnonoteBackup(json) };
   }
   const rows = Array.isArray(json) ? json : isObject(json) && Array.isArray(json.rows) ? json.rows : null;
   if (rows) return { source: 'hypothesis', pages: fromHypothesis(rows) };
-  throw new Error('Unrecognized file. Expected a Gloss backup or Hypothesis annotations (JSON).');
+  throw new Error('Unrecognized file. Expected an Annonote backup or Hypothesis annotations (JSON).');
 }
 
 export function pageMetaFixups(page: Page): Page {

@@ -6,7 +6,7 @@ import sidebarCss from './ui.css';
 
 declare global {
   interface Window {
-    __glossLoaded?: boolean;
+    __annonoteLoaded?: boolean;
   }
 }
 
@@ -16,17 +16,17 @@ declare global {
  * It is only created once something needs to be shown.
  */
 function main() {
-  if (window.__glossLoaded) return;
+  if (window.__annonoteLoaded) return;
   // Only ordinary HTML pages (not SVG/XML documents or image views).
   if (!(document.documentElement instanceof HTMLHtmlElement) || !document.body) return;
-  window.__glossLoaded = true;
+  window.__annonoteLoaded = true;
 
   let host: HTMLElement | null = null;
   const controller = new Controller((e) => !!host && e.composedPath().includes(host));
 
   const mount = () => {
     if (host) return;
-    host = document.createElement('gloss-root');
+    host = document.createElement('annonote-root');
     host.setAttribute(
       'style',
       'all: initial !important; position: fixed !important; inset: 0 auto auto 0 !important; width: 0 !important; height: 0 !important; z-index: 2147483647 !important; display: block !important;',
@@ -49,7 +49,7 @@ function main() {
 
   controller.start().catch((err: unknown) => {
     // The extension was reloaded or updated while this page stayed open.
-    console.debug('[Gloss] could not start:', err);
+    console.debug('[Annonote] could not start:', err);
   });
 }
 

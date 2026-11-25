@@ -66,11 +66,11 @@ export async function send<R extends Request>(req: R): Promise<ResponseMap[R['ty
   try {
     res = await chrome.runtime.sendMessage(req);
   } catch (err) {
-    // A tab opened before Gloss was updated or reloaded is still running the old script.
-    if (/context invalidated/i.test(String(err))) throw new Error('Gloss was updated. Reload this page to keep using it.');
+    // A tab opened before Annonote was updated or reloaded is still running the old script.
+    if (/context invalidated/i.test(String(err))) throw new Error('Annonote was updated. Reload this page to keep using it.');
     throw err;
   }
-  if (!res) throw new Error('No response from Gloss background worker');
+  if (!res) throw new Error('No response from Annonote background worker');
   if (!res.ok) throw new Error(res.error);
   return res.data;
 }

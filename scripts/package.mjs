@@ -1,4 +1,4 @@
-// Zips dist/ into release/gloss-<version>.zip (for "Load unpacked" or the Chrome Web Store).
+// Zips dist/ into release/annonote-<version>.zip (for "Load unpacked" or the Chrome Web Store).
 import * as esbuild from 'esbuild';
 import { mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, join, relative } from 'node:path';
@@ -23,6 +23,6 @@ const entries = walk(dist)
   .sort()
   .map((file) => ({ name: relative(dist, file).split('\\').join('/'), data: new Uint8Array(readFileSync(file)) }));
 mkdirSync(join(root, 'release'), { recursive: true });
-const out = join(root, 'release', `gloss-${version}.zip`);
+const out = join(root, 'release', `annonote-${version}.zip`);
 writeFileSync(out, createZip(entries));
 console.log(`Wrote ${relative(root, out)} (${entries.length} files)`);

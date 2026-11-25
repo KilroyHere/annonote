@@ -1,6 +1,6 @@
 {
   "manifest_version": 3,
-  "name": "Gloss",
+  "name": "Annonote",
   "description": "Highlight and annotate any web page. Notes stay on your computer and export to Markdown or Notion.",
   "version": "0.0.0",
   "minimum_chrome_version": "120",
@@ -11,7 +11,7 @@
     "128": "icons/icon-128.png"
   },
   "action": {
-    "default_title": "Gloss",
+    "default_title": "Annonote",
     "default_popup": "popup.html",
     "default_icon": {
       "16": "icons/icon-16.png",

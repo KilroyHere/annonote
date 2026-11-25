@@ -27,7 +27,7 @@ export function exportMarkdownZip(pages: Page[], highlightLinks: boolean): void 
       date: new Date(p.updated),
     })),
   );
-  downloadBlob(new Blob([zip as BlobPart], { type: 'application/zip' }), `gloss-markdown-${stamp()}.zip`);
+  downloadBlob(new Blob([zip as BlobPart], { type: 'application/zip' }), `annonote-markdown-${stamp()}.zip`);
 }
 
 export function exportMarkdownFile(page: Page, highlightLinks: boolean): void {
@@ -37,7 +37,7 @@ export function exportMarkdownFile(page: Page, highlightLinks: boolean): void {
 
 export function exportBackup(pages: Page[]): void {
   const json = JSON.stringify(toBackup(pages), null, 2);
-  downloadBlob(new Blob([json], { type: 'application/ld+json' }), `gloss-backup-${stamp()}.json`);
+  downloadBlob(new Blob([json], { type: 'application/ld+json' }), `annonote-backup-${stamp()}.json`);
 }
 
 /** Downloads all of a user's annotations from the Hypothesis API. */

@@ -55,7 +55,7 @@ function Sidebar({ c, s, root }: { c: Controller; s: ViewState; root: ShadowRoot
   return (
     <aside
       class="g-sidebar"
-      aria-label="Gloss notes for this page"
+      aria-label="Annonote notes for this page"
       onKeyDown={(e) => {
         if (e.key === 'Escape' && !s.editingId) c.toggleSidebar(false);
       }}
@@ -63,7 +63,7 @@ function Sidebar({ c, s, root }: { c: Controller; s: ViewState; root: ShadowRoot
       <header class="g-side-head">
         <Logo size={22} />
         <div class="g-side-title">
-          <strong>Gloss</strong>
+          <strong>Annonote</strong>
           <span>{count}</span>
         </div>
         <button type="button" class="g-icon-btn" aria-label="Close sidebar" title="Close (Esc)" onClick={() => c.toggleSidebar(false)}>

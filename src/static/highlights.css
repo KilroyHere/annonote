@@ -1,21 +1,21 @@
 /* Highlight colors, painted with the CSS Custom Highlight API (no DOM changes).
    Translucent so they work on both light and dark pages. */
-::highlight(gloss-yellow) {
+::highlight(annonote-yellow) {
   background-color: rgba(255, 212, 0, 0.42);
 }
-::highlight(gloss-green) {
+::highlight(annonote-green) {
   background-color: rgba(52, 199, 89, 0.34);
 }
-::highlight(gloss-blue) {
+::highlight(annonote-blue) {
   background-color: rgba(10, 132, 255, 0.28);
 }
-::highlight(gloss-pink) {
+::highlight(annonote-pink) {
   background-color: rgba(255, 55, 140, 0.28);
 }
-::highlight(gloss-purple) {
+::highlight(annonote-purple) {
   background-color: rgba(160, 90, 255, 0.3);
 }
-::highlight(gloss-active) {
+::highlight(annonote-active) {
   background-color: rgba(255, 140, 0, 0.35);
   text-decoration: underline 2px rgba(255, 120, 0, 0.9);
   text-underline-offset: 3px;

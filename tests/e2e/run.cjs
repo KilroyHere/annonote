@@ -146,7 +146,7 @@ async function storedPages(sw) {
 (async () => {
   await new Promise((r) => server.listen(0, '127.0.0.1', r));
   const origin = `http://127.0.0.1:${server.address().port}`;
-  const userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'gloss-e2e-'));
+  const userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'annonote-e2e-'));
   const context = await chromium.launchPersistentContext(userDataDir, {
     channel: 'chromium',
     headless: true,
@@ -180,7 +180,7 @@ async function storedPages(sw) {
     const before = await page.evaluate(() => document.body.innerHTML.length);
     await page.locator('.g-toolbar button[aria-label="Green"]').click();
     await eventually(async () => assert.deepEqual(await highlightedTexts(page), {
-      'gloss-green': ['The outside of each curve erodes while the inside collects sand and gravel'],
+      'annonote-green': ['The outside of each curve erodes while the inside collects sand and gravel'],
     }));
     assert.equal(await page.evaluate(() => document.body.innerHTML.length), before);
     assert.equal(await page.locator('.g-toolbar').count(), 0);
@@ -215,7 +215,7 @@ async function storedPages(sw) {
     await page.locator('#p3').click({ clickCount: 3 });
     await page.locator('.g-toolbar').waitFor();
     await page.locator('.g-toolbar button[aria-label="Pink"]').click();
-    await eventually(async () => assert.equal((await highlightCounts(page))['gloss-pink'], 1));
+    await eventually(async () => assert.equal((await highlightCounts(page))['annonote-pink'], 1));
   });
 
   await step('page note and page tags save', async () => {
@@ -268,7 +268,7 @@ async function storedPages(sw) {
   console.log('\nRe-anchoring');
   await step('highlights come back after reload', async () => {
     await page.reload();
-    await eventually(async () => assert.deepEqual(await highlightCounts(page), { 'gloss-green': 1, 'gloss-yellow': 1, 'gloss-pink': 1 }));
+    await eventually(async () => assert.deepEqual(await highlightCounts(page), { 'annonote-green': 1, 'annonote-yellow': 1, 'annonote-pink': 1 }));
   });
 
   await step('badge shows the count', async () => {
@@ -277,7 +277,7 @@ async function storedPages(sw) {
 
   await step('clicking a highlight opens its note in the sidebar', async () => {
     const box = await page.evaluate(() => {
-      const r = [...CSS.highlights.get('gloss-yellow')][0].getClientRects()[0];
+      const r = [...CSS.highlights.get('annonote-yellow')][0].getClientRects()[0];
       return { x: r.left + 20, y: r.top + r.height / 2 };
     });
     await page.mouse.click(box.x, box.y);
@@ -289,9 +289,9 @@ async function storedPages(sw) {
     await page.reload();
     await eventually(async () => {
       const texts = await highlightedTexts(page);
-      assert.equal(texts['gloss-yellow'][0], 'As water rounds a bend, it gets pushed toward the outer bank, raising the water surface there.');
-      assert.equal(texts['gloss-green'].length, 1);
-      assert.equal(texts['gloss-pink'].length, 1);
+      assert.equal(texts['annonote-yellow'][0], 'As water rounds a bend, it gets pushed toward the outer bank, raising the water surface there.');
+      assert.equal(texts['annonote-green'].length, 1);
+      assert.equal(texts['annonote-pink'].length, 1);
     });
   });
 
@@ -299,7 +299,7 @@ async function storedPages(sw) {
     version = 3;
     try {
     await page.reload();
-    await eventually(async () => assert.equal((await highlightCounts(page))['gloss-pink'], undefined));
+    await eventually(async () => assert.equal((await highlightCounts(page))['annonote-pink'], undefined));
     // Browser-level shortcuts can't be pressed from Playwright; send what the shortcut would.
     await sendToTabs(sw, { type: 'sidebar:open' });
     await page.locator('.g-orphans').filter({ hasText: 'Not found on this page · 1' }).waitFor();
@@ -316,7 +316,7 @@ async function storedPages(sw) {
   await step('the same article at another URL is matched by its canonical link', async () => {
     const mirror = await context.newPage();
     await mirror.goto(`${origin}/mirror`);
-    await eventually(async () => assert.deepEqual(await highlightCounts(mirror), { 'gloss-green': 1, 'gloss-yellow': 1, 'gloss-pink': 1 }));
+    await eventually(async () => assert.deepEqual(await highlightCounts(mirror), { 'annonote-green': 1, 'annonote-yellow': 1, 'annonote-pink': 1 }));
     await mirror.close();
   });
 
@@ -326,16 +326,16 @@ async function storedPages(sw) {
     await late.locator('#p2').waitFor();
     await selectPhrase(late, 'helical current');
     await late.locator('.g-toolbar button[aria-label="Blue"]').click();
-    await eventually(async () => assert.equal((await highlightCounts(late))['gloss-blue'], 1));
+    await eventually(async () => assert.equal((await highlightCounts(late))['annonote-blue'], 1));
     await late.reload();
-    assert.equal((await highlightCounts(late))['gloss-blue'], undefined, 'content not there yet');
-    await eventually(async () => assert.equal((await highlightCounts(late))['gloss-blue'], 1), { timeout: 6000 });
+    assert.equal((await highlightCounts(late))['annonote-blue'], undefined, 'content not there yet');
+    await eventually(async () => assert.equal((await highlightCounts(late))['annonote-blue'], 1), { timeout: 6000 });
     await late.close();
   });
 
   await step('page scripts are unaffected and see no extension DOM inside <body>', async () => {
     assert.equal(await page.evaluate(() => window.pageScriptRan), true);
-    assert.equal(await page.evaluate(() => document.body.querySelectorAll('gloss-root, mark').length), 0);
+    assert.equal(await page.evaluate(() => document.body.querySelectorAll('annonote-root, mark').length), 0);
   });
 
   console.log('\nLibrary');

@@ -153,7 +153,7 @@ function App() {
       const r = await send({ type: 'pages:import', pages: incoming });
       showToast({
         kind: 'info',
-        text: `Imported from ${source === 'gloss' ? 'backup' : 'Hypothesis'}: ${plural(r.added, 'new highlight')}, ${r.updated} updated, ${plural(r.pages, 'page')} changed.`,
+        text: `Imported from ${source === 'annonote' ? 'backup' : 'Hypothesis'}: ${plural(r.added, 'new highlight')}, ${r.updated} updated, ${plural(r.pages, 'page')} changed.`,
       });
     } catch (err) {
       showToast({ kind: 'error', text: `Import failed: ${(err as Error).message}` });
@@ -204,7 +204,7 @@ function App() {
         <div class="l-header-inner">
           <button type="button" class="l-brand" onClick={() => go('notes')}>
             <Logo size={28} />
-            <span>Gloss</span>
+            <span>Annonote</span>
           </button>
           {view === 'notes' && (
             <label class="l-search">
@@ -648,7 +648,7 @@ function SettingsView({
             {connected && <span class="l-ok">Connected</span>}
           </div>
           <p class="g-muted l-small">
-            The secret is stored only in this browser and sent only to api.notion.com. Gloss adds <em>URL</em>, <em>Tags</em> and{' '}
+            The secret is stored only in this browser and sent only to api.notion.com. Annonote adds <em>URL</em>, <em>Tags</em> and{' '}
             <em>Saved</em> columns to the database if they're missing.
           </p>
         </form>
@@ -665,7 +665,7 @@ function SettingsView({
           <span>
             Add “jump to highlight” links
             <span class="g-muted l-small l-block">
-              Links like <code>page#:~:text=…</code> open the page scrolled to the passage in Chrome, Edge and Safari, even without Gloss.
+              Links like <code>page#:~:text=…</code> open the page scrolled to the passage in Chrome, Edge and Safari, even without Annonote.
             </span>
           </span>
         </label>
@@ -674,7 +674,7 @@ function SettingsView({
       <section class="l-panel">
         <h2>Import from Hypothesis</h2>
         <p class="g-muted">
-          Copies your Hypothesis annotations into Gloss. Public annotations only need your username; for private and group annotations,
+          Copies your Hypothesis annotations into Annonote. Public annotations only need your username; for private and group annotations,
           add an API token from{' '}
           <a href="https://hypothes.is/account/developer" target="_blank" rel="noopener noreferrer">
             hypothes.is/account/developer

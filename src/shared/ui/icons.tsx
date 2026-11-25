@@ -56,7 +56,7 @@ export const IconSettings = (p: IconProps) =>
   );
 export const IconUpload = (p: IconProps) => svg(<path d="M12 21V9M7 14l5-5 5 5M5 3h14" />, p);
 
-/** The Gloss mark: a highlighter stroke under a line of text. */
+/** The Annonote mark: a highlighter stroke under a line of text. */
 export function Logo({ size = 20 }: IconProps) {
   return (
     <svg width={size} height={size} viewBox="0 0 32 32" aria-hidden="true" focusable="false">
