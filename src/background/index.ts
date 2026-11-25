@@ -3,7 +3,16 @@ import { NotionClient, parseDatabaseId, syncPageToNotion } from '../shared/notio
 import * as db from './db';
 
 /** Requests only the extension's own pages (library, popup) may make, never content scripts. */
-const PRIVILEGED = new Set<Request['type']>(['pages:list', 'pages:import', 'page:delete', 'page:setNotion']);
+const PRIVILEGED = new Set<Request['type']>([
+  'pages:list',
+  'pages:import',
+  'page:delete',
+  'page:setNotion',
+  'folder:add',
+  'folder:rename',
+  'folder:delete',
+  'pages:move',
+]);
 
 function isExtensionPage(sender: chrome.runtime.MessageSender): boolean {
   return !!sender.url && sender.url.startsWith(chrome.runtime.getURL(''));
@@ -31,11 +40,26 @@ async function handle(req: Request, sender: chrome.runtime.MessageSender): Promi
       return db.listPages();
     case 'pages:import':
       return db.importPages(req.pages);
+    case 'folders:list':
+      return db.listFolders();
+    case 'folder:add':
+      return db.addFolder(req.path);
+    case 'folder:rename':
+      return db.renameFolder(req.from, req.to);
+    case 'folder:delete':
+      return db.deleteFolder(req.path);
+    case 'pages:move':
+      await db.movePages(req.pageKeys, req.folder);
+      return null;
     case 'notion:sync':
       return syncToNotion(req.pageKey);
     case 'settings:public': {
       const s = await db.getSettings();
-      return { highlightLinks: s.highlightLinks, notionConfigured: !!(s.notionToken && parseDatabaseId(s.notionDatabaseId)) };
+      return {
+        highlightLinks: s.highlightLinks,
+        notionConfigured: !!(s.notionToken && parseDatabaseId(s.notionDatabaseId)),
+        theme: s.theme,
+      };
     }
     case 'library:open': {
       const hash = req.view === 'settings' ? '#settings' : req.pageKey ? `#page=${encodeURIComponent(req.pageKey)}` : '';

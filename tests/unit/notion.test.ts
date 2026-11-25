@@ -147,7 +147,7 @@ describe('syncPageToNotion', () => {
     const { fake, client } = setup();
     const state = await syncPageToNotion(client, DB, basePage(), opts);
 
-    expect(Object.keys(fake.db.properties).sort()).toEqual(['Name', 'Saved', 'Tags', 'URL']);
+    expect(Object.keys(fake.db.properties).sort()).toEqual(['Folder', 'Name', 'Saved', 'Tags', 'URL']);
     const page = fake.pages.get(state.pageId)!;
     expect(page.properties).toMatchObject({
       Name: { title: [{ text: { content: 'An article' } }] },

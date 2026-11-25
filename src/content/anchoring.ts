@@ -1,50 +1,81 @@
-import type { Selector, TextPositionSelector, TextQuoteSelector } from '../shared/types';
+import type { AnnotationImage, Selector, TextPositionSelector, TextQuoteSelector } from '../shared/types';
+import { atomAncestor, atomOf, type Atom } from './atoms';
 import { locate } from './locate';
 
 /** Text inside these elements is never part of the page text used for anchoring. */
 const SKIP = new Set(['script', 'style', 'noscript', 'template', 'textarea']);
 const CONTEXT = 32;
 
-/** The page's text as one string, with a map back to the DOM text nodes it came from. */
+/**
+ * The page's text as one string, with a map back to the DOM nodes it came from.
+ * Most segments are text nodes; math and images ("atoms") are single element
+ * segments whose text is their TeX source or a placeholder character.
+ */
 export interface TextMap {
   text: string;
-  nodes: Text[];
+  nodes: (Text | Element)[];
   starts: number[];
-  index: Map<Text, number>;
+  index: Map<Node, number>;
+  atoms: Map<Element, Atom>;
 }
 
 export function buildTextMap(root: Node): TextMap {
-  const doc = root.ownerDocument ?? (root as Document);
-  const walker = doc.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
-    acceptNode(node) {
-      const parent = node.parentElement;
-      if (!parent || SKIP.has(parent.localName)) return NodeFilter.FILTER_REJECT;
-      return (node as Text).length ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT;
-    },
-  });
-  const nodes: Text[] = [];
+  const nodes: (Text | Element)[] = [];
   const starts: number[] = [];
-  const index = new Map<Text, number>();
+  const index = new Map<Node, number>();
+  const atoms = new Map<Element, Atom>();
   const parts: string[] = [];
   let offset = 0;
-  for (let n = walker.nextNode(); n; n = walker.nextNode()) {
-    const t = n as Text;
-    index.set(t, nodes.length);
-    nodes.push(t);
+  const add = (node: Text | Element, text: string) => {
+    index.set(node, nodes.length);
+    nodes.push(node);
     starts.push(offset);
-    parts.push(t.data);
-    offset += t.data.length;
+    parts.push(text);
+    offset += text.length;
+  };
+
+  // Iterative depth-first walk in document order; atoms and skipped elements are not entered.
+  const stack: Node[] = [];
+  for (let c = root.lastChild; c; c = c.previousSibling) stack.push(c);
+  while (stack.length) {
+    const node = stack.pop()!;
+    if (node.nodeType === Node.TEXT_NODE) {
+      if ((node as Text).length) add(node as Text, (node as Text).data);
+      continue;
+    }
+    if (node.nodeType !== Node.ELEMENT_NODE) continue;
+    const el = node as Element;
+    if (SKIP.has(el.localName)) continue;
+    const atom = atomOf(el);
+    if (atom) {
+      atoms.set(el, atom);
+      if (atom.text) add(el, atom.text);
+      continue;
+    }
+    for (let c = el.lastChild; c; c = c.previousSibling) stack.push(c);
   }
-  return { text: parts.join(''), nodes, starts, index };
+  return { text: parts.join(''), nodes, starts, index, atoms };
 }
 
-/** Converts a DOM boundary point to an offset in the page text. */
-function toOffset(map: TextMap, node: Node, offset: number): number {
+function segmentLength(map: TextMap, i: number): number {
+  return (i + 1 < map.starts.length ? map.starts[i + 1]! : map.text.length) - map.starts[i]!;
+}
+
+/** Converts a DOM boundary point to an offset in the page text. Points inside an atom snap to its edges. */
+function toOffset(map: TextMap, node: Node, offset: number, isEnd: boolean): number {
+  const atom = atomAncestor(node);
+  if (atom) {
+    const i = map.index.get(atom);
+    if (i !== undefined) return map.starts[i]! + (isEnd ? segmentLength(map, i) : 0);
+    // An atom with no text (e.g. empty math): treat the point as sitting just before it.
+    node = atom.parentNode ?? atom;
+    offset = atom.parentNode ? [...atom.parentNode.childNodes].indexOf(atom as ChildNode) + (isEnd ? 1 : 0) : 0;
+  }
   if (node.nodeType === Node.TEXT_NODE) {
-    const i = map.index.get(node as Text);
+    const i = map.index.get(node);
     if (i !== undefined) return map.starts[i]! + Math.min(offset, (node as Text).length);
   }
-  // The point sits between elements (or in skipped text): use the first text node after it.
+  // The point sits between elements (or in skipped text): use the first segment after it.
   const doc = node.ownerDocument ?? (node as Document);
   const point = doc.createRange();
   point.setStart(node, offset);
@@ -58,36 +89,48 @@ function toOffset(map: TextMap, node: Node, offset: number): number {
   return lo < map.nodes.length ? map.starts[lo]! : map.text.length;
 }
 
-/** Converts a text offset back to a DOM point. `isEnd` prefers the end of the previous node at boundaries. */
-function toPoint(map: TextMap, offset: number, isEnd: boolean): { node: Text; offset: number } | null {
-  const { nodes, starts } = map;
-  if (!nodes.length) return null;
+/** Finds the segment holding a text offset. `isEnd` prefers the previous segment at boundaries. */
+function segmentAt(map: TextMap, offset: number, isEnd: boolean): number {
+  const { starts } = map;
   let lo = 0;
-  let hi = nodes.length - 1;
+  let hi = starts.length - 1;
   while (lo < hi) {
     const mid = (lo + hi + 1) >> 1;
     const s = starts[mid]!;
     if (isEnd ? s < offset : s <= offset) lo = mid;
     else hi = mid - 1;
   }
-  const node = nodes[lo]!;
-  return { node, offset: Math.max(0, Math.min(offset - starts[lo]!, node.length)) };
+  return lo;
 }
 
 export function rangeFromSpan(map: TextMap, start: number, end: number): Range | null {
-  const s = toPoint(map, start, false);
-  const e = toPoint(map, end, true);
-  if (!s || !e) return null;
-  const range = s.node.ownerDocument.createRange();
-  range.setStart(s.node, s.offset);
-  range.setEnd(e.node, e.offset);
+  if (!map.nodes.length) return null;
+  const si = segmentAt(map, start, false);
+  const ei = segmentAt(map, end, true);
+  const sNode = map.nodes[si]!;
+  const eNode = map.nodes[ei]!;
+  const range = sNode.ownerDocument!.createRange();
+  if (sNode.nodeType === Node.TEXT_NODE) {
+    range.setStart(sNode, Math.max(0, Math.min(start - map.starts[si]!, (sNode as Text).length)));
+  } else if (start < map.starts[si]! + segmentLength(map, si)) {
+    range.setStartBefore(sNode);
+  } else {
+    range.setStartAfter(sNode);
+  }
+  if (eNode.nodeType === Node.TEXT_NODE) {
+    range.setEnd(eNode, Math.max(0, Math.min(end - map.starts[ei]!, (eNode as Text).length)));
+  } else if (end > map.starts[ei]!) {
+    range.setEndAfter(eNode);
+  } else {
+    range.setEndBefore(eNode);
+  }
   return range;
 }
 
 /** Describes a DOM range with W3C selectors (quote + position), trimming surrounding whitespace. */
 export function describe(map: TextMap, range: Range): { quote: TextQuoteSelector; position: TextPositionSelector } | null {
-  let start = toOffset(map, range.startContainer, range.startOffset);
-  let end = toOffset(map, range.endContainer, range.endOffset);
+  let start = toOffset(map, range.startContainer, range.startOffset, false);
+  let end = toOffset(map, range.endContainer, range.endOffset, true);
   const { text } = map;
   while (start < end && /\s/.test(text[start]!)) start++;
   while (end > start && /\s/.test(text[end - 1]!)) end--;
@@ -110,4 +153,46 @@ export function anchor(map: TextMap, selectors: Selector[]): Range | null {
   const pos = selectors.find((s): s is TextPositionSelector => s.type === 'TextPositionSelector');
   const span = locate(map.text, quote, pos);
   return span ? rangeFromSpan(map, span.start, span.end) : null;
+}
+
+/** True if any math or image falls inside the span. */
+export function spanHasAtoms(map: TextMap, start: number, end: number): boolean {
+  for (let i = segmentAt(map, start, false); i < map.nodes.length && map.starts[i]! < end; i++) {
+    if (map.atoms.has(map.nodes[i] as Element)) return true;
+  }
+  return false;
+}
+
+const BLOCK = 'p, div, li, ul, ol, dl, dt, dd, h1, h2, h3, h4, h5, h6, blockquote, pre, figure, figcaption, table, tr, td, th, section, article, header, footer, aside, main, nav, details, summary, hr';
+
+function blockOf(node: Node): Element | null {
+  const el = node.nodeType === Node.ELEMENT_NODE ? (node as Element).parentElement : node.parentElement;
+  return el?.closest(BLOCK) ?? null;
+}
+
+/**
+ * The span as readable text: math as $TeX$ (display math on its own line),
+ * images left out of the text and returned separately, paragraph breaks kept.
+ */
+export function renderSpan(map: TextMap, start: number, end: number): { text: string; images: AnnotationImage[] } {
+  const out: string[] = [];
+  const images: AnnotationImage[] = [];
+  let lastBlock: Element | null | undefined;
+  for (let i = segmentAt(map, start, false); i < map.nodes.length && map.starts[i]! < end; i++) {
+    const node = map.nodes[i]!;
+    const block = blockOf(node);
+    if (lastBlock !== undefined && block !== lastBlock) out.push('\n\n');
+    lastBlock = block;
+    const atom = map.atoms.get(node as Element);
+    if (atom?.kind === 'image') {
+      images.push({ ...(atom.src ? { src: atom.src } : {}), alt: atom.alt ?? '' });
+    } else if (atom?.kind === 'math') {
+      out.push(atom.display ? `\n\n${atom.text}\n\n` : atom.text);
+    } else {
+      const s = map.starts[i]!;
+      const data = (node as Text).data;
+      out.push(data.slice(Math.max(0, start - s), Math.min(data.length, end - s)).replace(/\s+/g, ' '));
+    }
+  }
+  return { text: out.join(''), images };
 }

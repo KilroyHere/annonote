@@ -10,6 +10,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:e2e": "node scripts/build.mjs --e2e && node tests/e2e/run.cjs",
+    "browser": "node scripts/build.mjs && node scripts/browser.cjs",
     "package": "node scripts/build.mjs && node scripts/package.mjs"
   },
   "license": "UNLICENSED",

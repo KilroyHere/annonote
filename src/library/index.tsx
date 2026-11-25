@@ -1,28 +1,36 @@
-import { render } from 'preact';
+import { render, type ComponentChildren } from 'preact';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { parseImport } from '../shared/backup';
 import { pageToMarkdown } from '../shared/markdown';
 import { send } from '../shared/messages';
 import { NotionClient, ensureSchema, parseDatabaseId, syncPageToNotion, testConnection } from '../shared/notion';
 import { displayQuote } from '../shared/quote';
-import { textFragmentUrl } from '../shared/textFragment';
-import { COLORS, DEFAULT_SETTINGS, allTags, byPosition, type Annotation, type Color, type Page, type Settings } from '../shared/types';
-import { AnnotationEditor, COLOR_LABELS, TagChips } from '../shared/ui/components';
+import { hasTextFragment, textFragmentUrl } from '../shared/textFragment';
+import { DEFAULT_SETTINGS, THEMES, normalizeFolder, type Annotation, type Color, type Page, type Settings, type Theme } from '../shared/types';
+import { AnnotationEditor, ColorFilter, FolderPicker, QuoteContent, TagChips, folderLabel } from '../shared/ui/components';
 import componentsCss from '../shared/ui/components.css';
 import {
   IconCopy,
   IconDownload,
   IconEdit,
   IconExternal,
+  IconFolder,
+  IconInbox,
+  IconMoon,
+  IconPlus,
   IconSearch,
   IconSend,
   IconSettings,
+  IconStack,
+  IconSun,
   IconTrash,
   IconUpload,
   Logo,
 } from '../shared/ui/icons';
+import { applyPageTheme, isDark } from '../shared/ui/theme';
 import { hostOf } from '../shared/url';
 import { exportBackup, exportMarkdownFile, exportMarkdownZip, fetchHypothesis } from './exporters';
+import { UNFILED, filterPages, folderCounts, pagesInFolder, tagCounts as countTags } from './filter';
 import libraryCss from './library.css';
 
 type Toast = { text: string; kind: 'info' | 'error'; href?: string; linkText?: string } | null;
@@ -46,46 +54,18 @@ function plural(n: number, word: string): string {
   return `${n} ${word}${n === 1 ? '' : 's'}`;
 }
 
-/** Every word of the query must appear somewhere in the text. */
-function matches(haystack: string, words: string[]): boolean {
-  const h = haystack.toLowerCase();
-  return words.every((w) => h.includes(w));
-}
-
-interface Filtered {
-  page: Page;
-  annotations: Annotation[];
-}
-
-function filterPages(pages: Page[], query: string, tag: string | null, color: Color | null): Filtered[] {
-  const words = query.toLowerCase().split(/\s+/).filter(Boolean);
-  const out: Filtered[] = [];
-  for (const page of pages) {
-    const sorted = [...page.annotations].sort(byPosition);
-    const pageText = `${page.title} ${page.url} ${page.pageNote} ${page.tags.join(' ')}`;
-    const pageMatchesQuery = words.length > 0 && matches(pageText, words);
-    const pageHasTag = !!tag && page.tags.includes(tag);
-    const annMatches = (a: Annotation) =>
-      (!color || a.color === color) &&
-      (!tag || pageHasTag || a.tags.includes(tag)) &&
-      (!words.length || pageMatchesQuery || matches(`${displayQuote(a)} ${a.note} ${a.tags.join(' ')}`, words));
-    const anns = sorted.filter(annMatches);
-    const filtering = words.length > 0 || !!tag || !!color;
-    if (!filtering) out.push({ page, annotations: sorted });
-    else if (anns.length) out.push({ page, annotations: anns });
-    else if (!color && (pageMatchesQuery || pageHasTag) && (!tag || pageHasTag) && (!words.length || pageMatchesQuery)) {
-      out.push({ page, annotations: [] });
-    }
-  }
-  return out;
-}
+/** MIME type for dragging page cards onto folders. */
+const PAGE_DRAG_TYPE = 'application/x-annonote-page';
+const THEME_LABELS: Record<Theme, string> = { system: 'Match system', light: 'Light', dark: 'Night' };
 
 function App() {
   const [pages, setPages] = useState<Page[] | null>(null);
   const [settings, setSettings] = useState<Settings>(DEFAULT_SETTINGS);
   const [query, setQuery] = useState('');
   const [tag, setTag] = useState<string | null>(null);
-  const [color, setColor] = useState<Color | null>(null);
+  /** Selected folder: null for all pages, UNFILED for pages without a folder. */
+  const [folder, setFolder] = useState<string | null>(null);
+  const [folders, setFolders] = useState<string[]>([]);
   const [view, setView] = useState<'notes' | 'settings'>(location.hash === '#settings' ? 'settings' : 'notes');
   const [toast, setToast] = useState<Toast>(null);
   const [busy, setBusy] = useState<string | null>(null);
@@ -99,7 +79,9 @@ function App() {
   }, []);
 
   const reload = useCallback(async () => {
-    setPages(await send({ type: 'pages:list' }));
+    const [p, f] = await Promise.all([send({ type: 'pages:list' }), send({ type: 'folders:list' })]);
+    setPages(p);
+    setFolders(f);
   }, []);
 
   useEffect(() => {
@@ -109,7 +91,7 @@ function App() {
     const onChange = (changes: Record<string, chrome.storage.StorageChange>, area: string) => {
       if (area !== 'local') return;
       if (changes.settings) void loadSettings().then(setSettings);
-      if (Object.keys(changes).some((k) => k.startsWith('page:'))) {
+      if (changes.folders || Object.keys(changes).some((k) => k.startsWith('page:'))) {
         window.clearTimeout(timer);
         timer = window.setTimeout(() => void reload(), 150);
       }
@@ -138,12 +120,49 @@ function App() {
     setView(v);
   };
 
-  const filtered = useMemo(() => filterPages(pages ?? [], query, tag, color), [pages, query, tag, color]);
-  const tagCounts = useMemo(() => {
-    const counts = new Map<string, number>();
-    for (const p of pages ?? []) for (const t of allTags(p)) counts.set(t, (counts.get(t) ?? 0) + 1);
-    return [...counts.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
-  }, [pages]);
+  useEffect(() => applyPageTheme(document.getElementById('app')!, settings.theme), [settings.theme]);
+  // Follow the system's light/dark switch while the theme is "Match system".
+  const [, setSystemDark] = useState(isDark('system'));
+  useEffect(() => {
+    const mq = matchMedia('(prefers-color-scheme: dark)');
+    const on = () => setSystemDark(mq.matches);
+    mq.addEventListener('change', on);
+    return () => mq.removeEventListener('change', on);
+  }, []);
+  const dark = isDark(settings.theme);
+  const toggleTheme = async () => setSettings(await saveSettings({ theme: dark ? 'light' : 'dark' }));
+
+  // A folder that no longer exists (renamed or deleted elsewhere) falls back to all pages.
+  useEffect(() => {
+    if (folder && folder !== UNFILED && !folders.includes(folder)) setFolder(null);
+  }, [folder, folders]);
+
+  const filtered = useMemo(() => filterPages(pages ?? [], query, tag, folder), [pages, query, tag, folder]);
+  const inFolderPages = useMemo(() => pagesInFolder(pages ?? [], folder), [pages, folder]);
+  // Tags are counted within the selected folder, so the list shows what is useful there.
+  const tagCounts = useMemo(() => countTags(inFolderPages), [inFolderPages]);
+  const counts = useMemo(() => folderCounts(pages ?? [], folders), [pages, folders]);
+  const unfiledCount = (pages ?? []).filter((p) => !p.folder).length;
+  const shownPages = filtered.map((f) => f.page);
+  const filteringPages = folder !== null || !!tag || !!query;
+
+  const movePages = async (keys: string[], to: string) => {
+    try {
+      await send({ type: 'pages:move', pageKeys: keys, folder: to });
+      showToast({ kind: 'info', text: to ? `Moved to ${to.replace(/\//g, ' › ')}.` : 'Removed from its folder.' });
+    } catch (err) {
+      showToast({ kind: 'error', text: `Couldn't move: ${(err as Error).message}` });
+    }
+  };
+
+  const folderAction = async (action: () => Promise<string[]>, done?: () => void) => {
+    try {
+      setFolders(await action());
+      done?.();
+    } catch (err) {
+      showToast({ kind: 'error', text: (err as Error).message });
+    }
+  };
   const totalHighlights = (pages ?? []).reduce((n, p) => n + p.annotations.length, 0);
   const notionReady = !!(settings.notionToken && parseDatabaseId(settings.notionDatabaseId));
 
@@ -224,9 +243,15 @@ function App() {
               <IconUpload size={14} />
               Import
             </button>
-            <button type="button" class="g-btn" disabled={!pages?.length} onClick={() => pages && exportMarkdownZip(pages, settings.highlightLinks)}>
+            <button
+              type="button"
+              class="g-btn"
+              disabled={!shownPages.length}
+              title={filteringPages ? 'Download the pages shown as Markdown files' : 'Download every page as Markdown files, one subfolder per folder'}
+              onClick={() => exportMarkdownZip(shownPages, settings.highlightLinks)}
+            >
               <IconDownload size={14} />
-              Markdown (.zip)
+              Markdown (.zip){filteringPages && shownPages.length ? ` · ${shownPages.length}` : ''}
             </button>
             <button type="button" class="g-btn" disabled={!pages?.length} onClick={() => pages && exportBackup(pages)}>
               <IconDownload size={14} />
@@ -238,6 +263,15 @@ function App() {
                 {notionProgress ? `Sending ${notionProgress}…` : 'Send all to Notion'}
               </button>
             )}
+            <button
+              type="button"
+              class="g-icon-btn"
+              aria-label={dark ? 'Switch to light mode' : 'Switch to night mode'}
+              title={dark ? 'Light mode' : 'Night mode'}
+              onClick={() => void toggleTheme()}
+            >
+              {dark ? <IconSun size={18} /> : <IconMoon size={18} />}
+            </button>
             <button
               type="button"
               class={`g-icon-btn${view === 'settings' ? ' is-active' : ''}`}
@@ -271,21 +305,36 @@ function App() {
             <p class="l-stats">
               {plural(pages?.length ?? 0, 'page')} · {plural(totalHighlights, 'highlight')}
             </p>
-            <h2 class="g-label">Colors</h2>
-            <div class="l-color-filter">
-              {COLORS.map((c) => (
-                <button
-                  type="button"
-                  key={c}
-                  class={`g-dot g-dot-${c}`}
-                  aria-label={`Only ${COLOR_LABELS[c].toLowerCase()} highlights`}
-                  title={COLOR_LABELS[c]}
-                  aria-pressed={color === c}
-                  onClick={() => setColor(color === c ? null : c)}
-                />
-              ))}
-            </div>
-            <h2 class="g-label">Tags</h2>
+            <FolderList
+              folders={folders}
+              counts={counts}
+              total={pages?.length ?? 0}
+              unfiled={unfiledCount}
+              selected={folder}
+              onSelect={(f) => {
+                setFolder(f);
+                setTag(null);
+              }}
+              onAdd={(path, done) => void folderAction(() => send({ type: 'folder:add', path }), done)}
+              onRename={(from, to, done) =>
+                void folderAction(
+                  () => send({ type: 'folder:rename', from, to }),
+                  () => {
+                    if (folder && (folder === from || folder.startsWith(`${from}/`))) setFolder(normalizeFolder(to + folder.slice(from.length)));
+                    done();
+                  },
+                )
+              }
+              onDelete={(path) => {
+                const n = counts.get(path) ?? 0;
+                const msg = n
+                  ? `Delete the folder “${path}”? Its ${plural(n, 'page')} will be kept and moved up a level.`
+                  : `Delete the folder “${path}”?`;
+                if (confirm(msg)) void folderAction(() => send({ type: 'folder:delete', path }));
+              }}
+              onDropPages={(keys, to) => void movePages(keys, to)}
+            />
+            <h2 class="g-label">{folder === null ? 'Tags' : 'Tags in this folder'}</h2>
             {tagCounts.length ? (
               <ul class="l-tag-list">
                 {tagCounts.map(([t, n]) => (
@@ -298,17 +347,22 @@ function App() {
                 ))}
               </ul>
             ) : (
-              <p class="g-muted l-small">Tags you add to highlights show up here.</p>
+              <p class="g-muted l-small">{folder === null ? 'Tags you add to highlights show up here.' : 'No tags in this folder yet.'}</p>
             )}
           </aside>
 
           <main class="l-main">
-            {(tag || color || query) && (
+            {filteringPages && (
               <div class="l-filter-bar">
                 <span>
                   Showing {plural(filtered.length, 'page')}
+                  {folder === UNFILED && <> not in a folder</>}
+                  {folder !== null && folder !== UNFILED && (
+                    <>
+                      {' '}in <strong>{folder.replace(/\//g, ' › ')}</strong>
+                    </>
+                  )}
                   {tag && <> tagged <strong>#{tag}</strong></>}
-                  {color && <> with {COLOR_LABELS[color].toLowerCase()} highlights</>}
                   {query && <> matching “{query}”</>}
                 </span>
                 <button
@@ -316,7 +370,7 @@ function App() {
                   class="g-link-btn"
                   onClick={() => {
                     setTag(null);
-                    setColor(null);
+                    setFolder(null);
                     setQuery('');
                   }}
                 >
@@ -327,7 +381,11 @@ function App() {
             {pages === null ? null : pages.length === 0 ? (
               <EmptyLibrary onImport={() => fileInput.current?.click()} />
             ) : filtered.length === 0 ? (
-              <p class="l-none">Nothing matches.</p>
+              <p class="l-none">
+                {folder !== null && !tag && !query
+                  ? 'No pages here yet. Drag a page onto this folder, or pick the folder in a page’s menu or in the sidebar on the page itself.'
+                  : 'Nothing matches.'}
+              </p>
             ) : (
               filtered.map(({ page, annotations }) => (
                 <PageCard
@@ -337,6 +395,8 @@ function App() {
                   settings={settings}
                   notionReady={notionReady}
                   busy={!!busy}
+                  folders={folders}
+                  onMove={(to) => void movePages([page.key], to)}
                   onTag={setTag}
                   onCopy={() => void copyMarkdown(page)}
                   onDownload={() => exportMarkdownFile(page, settings.highlightLinks)}
@@ -360,6 +420,150 @@ function App() {
             Dismiss
           </button>
         </div>
+      )}
+    </>
+  );
+}
+
+/** Text input used to name or rename a folder. Enter saves, Esc cancels. */
+function FolderNameInput({ initial, placeholder, onSave, onCancel }: { initial: string; placeholder: string; onSave: (name: string) => void; onCancel: () => void }) {
+  const [draft, setDraft] = useState(initial);
+  const ref = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    ref.current?.focus();
+    ref.current?.select();
+  }, []);
+  return (
+    <form
+      class="l-folder-form"
+      onSubmit={(e) => {
+        e.preventDefault();
+        if (normalizeFolder(draft)) onSave(draft);
+        else onCancel();
+      }}
+    >
+      <input
+        ref={ref}
+        class="g-input"
+        aria-label="Folder name"
+        placeholder={placeholder}
+        value={draft}
+        onInput={(e) => setDraft(e.currentTarget.value)}
+        onKeyDown={(e) => e.key === 'Escape' && onCancel()}
+        onBlur={() => (normalizeFolder(draft) && normalizeFolder(draft) !== normalizeFolder(initial) ? onSave(draft) : onCancel())}
+      />
+    </form>
+  );
+}
+
+function FolderList({
+  folders,
+  counts,
+  total,
+  unfiled,
+  selected,
+  onSelect,
+  onAdd,
+  onRename,
+  onDelete,
+  onDropPages,
+}: {
+  folders: string[];
+  counts: Map<string, number>;
+  total: number;
+  unfiled: number;
+  selected: string | null;
+  onSelect: (folder: string | null) => void;
+  onAdd: (path: string, done: () => void) => void;
+  onRename: (from: string, to: string, done: () => void) => void;
+  onDelete: (path: string) => void;
+  onDropPages: (keys: string[], folder: string) => void;
+}) {
+  const [adding, setAdding] = useState(false);
+  const [renaming, setRenaming] = useState<string | null>(null);
+  const [dropTarget, setDropTarget] = useState<string | null>(null);
+
+  /** Drag-and-drop handlers that move a dragged page card into `folder` ("" = out of any folder). */
+  const dropProps = (folder: string) => ({
+    onDragOver: (e: DragEvent) => {
+      if (!e.dataTransfer?.types.includes(PAGE_DRAG_TYPE)) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      setDropTarget(folder);
+    },
+    onDragLeave: () => setDropTarget((t) => (t === folder ? null : t)),
+    onDrop: (e: DragEvent) => {
+      const key = e.dataTransfer?.getData(PAGE_DRAG_TYPE);
+      setDropTarget(null);
+      if (!key) return;
+      e.preventDefault();
+      onDropPages([key], folder);
+    },
+  });
+
+  const row = (key: string | null, icon: ComponentChildren, label: string, count: number, depth = 0, drop?: string) => (
+    <button
+      type="button"
+      class={`l-folder${selected === key ? ' is-active' : ''}${drop !== undefined && dropTarget === drop ? ' is-drop' : ''}`}
+      style={{ paddingLeft: `${8 + depth * 14}px` }}
+      aria-pressed={selected === key}
+      onClick={() => onSelect(selected === key && key !== null ? null : key)}
+      {...(drop !== undefined ? dropProps(drop) : {})}
+    >
+      {icon}
+      <span class="l-folder-name">{label}</span>
+      <span class="g-muted">{count}</span>
+    </button>
+  );
+
+  return (
+    <>
+      <div class="l-label-row">
+        <h2 class="g-label">Folders</h2>
+        <button type="button" class="g-icon-btn l-mini" title="New folder" aria-label="New folder" onClick={() => setAdding(true)}>
+          <IconPlus size={14} />
+        </button>
+      </div>
+      <ul class="l-folder-list">
+        <li>{row(null, <IconStack size={14} />, 'All pages', total)}</li>
+        <li>{row(UNFILED, <IconInbox size={14} />, 'Not in a folder', unfiled, 0, '')}</li>
+        {folders.map((f) => {
+          const depth = f.split('/').length - 1;
+          return (
+            <li key={f} class="l-folder-item">
+              {renaming === f ? (
+                <FolderNameInput
+                  initial={f}
+                  placeholder="Folder name"
+                  onSave={(to) => onRename(f, to, () => setRenaming(null))}
+                  onCancel={() => setRenaming(null)}
+                />
+              ) : (
+                <>
+                  {row(f, <IconFolder size={14} />, folderLabel(f).trim(), counts.get(f) ?? 0, depth, f)}
+                  <span class="l-folder-actions">
+                    <button type="button" class="g-icon-btn l-mini" title="Rename folder" aria-label={`Rename folder ${f}`} onClick={() => setRenaming(f)}>
+                      <IconEdit size={12} />
+                    </button>
+                    <button type="button" class="g-icon-btn l-mini" title="Delete folder" aria-label={`Delete folder ${f}`} onClick={() => onDelete(f)}>
+                      <IconTrash size={12} />
+                    </button>
+                  </span>
+                </>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+      {adding ? (
+        <FolderNameInput
+          initial={selected && selected !== UNFILED ? `${selected}/` : ''}
+          placeholder="Name (use / for subfolders)"
+          onSave={(path) => onAdd(path, () => setAdding(false))}
+          onCancel={() => setAdding(false)}
+        />
+      ) : (
+        !folders.length && <p class="g-muted l-small">Make folders to group pages, then drag pages onto them.</p>
       )}
     </>
   );
@@ -394,6 +598,8 @@ function PageCard({
   settings,
   notionReady,
   busy,
+  folders,
+  onMove,
   onTag,
   onCopy,
   onDownload,
@@ -404,13 +610,17 @@ function PageCard({
   settings: Settings;
   notionReady: boolean;
   busy: boolean;
+  folders: string[];
+  onMove: (folder: string) => void;
   onTag: (t: string) => void;
   onCopy: () => void;
   onDownload: () => void;
   onNotion: () => void;
 }) {
   const [editing, setEditing] = useState<string | null>(null);
-  const hidden = page.annotations.length - annotations.length;
+  const [color, setColor] = useState<Color | null>(null);
+  const visible = color ? annotations.filter((a) => a.color === color) : annotations;
+  const hidden = page.annotations.length - visible.length;
   const site = page.siteName || hostOf(page.url);
 
   const remove = async () => {
@@ -420,7 +630,16 @@ function PageCard({
 
   return (
     <article class="l-page" data-page-key={page.key}>
-      <header class="l-page-head">
+      <header
+        class="l-page-head"
+        draggable
+        title="Drag onto a folder to move this page"
+        onDragStart={(e) => {
+          e.dataTransfer?.setData(PAGE_DRAG_TYPE, page.key);
+          e.dataTransfer?.setData('text/uri-list', page.url);
+          if (e.dataTransfer) e.dataTransfer.effectAllowed = 'move';
+        }}
+      >
         <div class="l-page-title">
           <h2>
             <a href={page.url} target="_blank" rel="noopener noreferrer">
@@ -438,6 +657,13 @@ function PageCard({
               </>
             )}
           </p>
+          <div class="l-page-tools">
+            <label class="l-folder-pick" title="Folder">
+              <IconFolder size={13} />
+              <FolderPicker value={page.folder} folders={folders} label="Folder for this page" onChange={onMove} />
+            </label>
+            <ColorFilter annotations={annotations} value={color} onChange={setColor} />
+          </div>
         </div>
         <div class="l-page-actions">
           <button type="button" class="g-icon-btn" title="Copy as Markdown" aria-label="Copy as Markdown" onClick={onCopy}>
@@ -464,13 +690,13 @@ function PageCard({
         </div>
       )}
 
-      {annotations.length > 0 && (
+      {visible.length > 0 && (
         <ol class="l-anns">
-          {annotations.map((a) => (
+          {visible.map((a) => (
             <li key={a.id} class={`l-ann g-card-${a.color}`}>
               <blockquote class="l-quote">
-                {displayQuote(a)}
-                {settings.highlightLinks && (
+                <QuoteContent a={a} />
+                {settings.highlightLinks && hasTextFragment(displayQuote(a)) && (
                   <a
                     class="l-jump"
                     href={textFragmentUrl(page.url, displayQuote(a))}
@@ -652,6 +878,20 @@ function SettingsView({
             <em>Saved</em> columns to the database if they're missing.
           </p>
         </form>
+      </section>
+
+      <section class="l-panel">
+        <h2>Appearance</h2>
+        <div class="l-theme-choice" role="radiogroup" aria-label="Appearance">
+          {THEMES.map((t) => (
+            <label key={t} class={`l-theme-option${settings.theme === t ? ' is-active' : ''}`}>
+              <input type="radio" name="theme" value={t} checked={settings.theme === t} onChange={async () => onSaved(await saveSettings({ theme: t }))} />
+              {t === 'dark' ? <IconMoon size={15} /> : t === 'light' ? <IconSun size={15} /> : <IconSettings size={15} />}
+              {THEME_LABELS[t]}
+            </label>
+          ))}
+        </div>
+        <p class="g-muted l-small">Applies to the sidebar on pages, the library and the toolbar popup.</p>
       </section>
 
       <section class="l-panel">

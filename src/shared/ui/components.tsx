@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
-import { COLORS, parseTags, type Color } from '../types';
+import { displayQuote, splitMath } from '../quote';
+import { COLORS, normalizeFolder, parseTags, type Annotation, type Color } from '../types';
 import { IconTrash } from './icons';
 
 export const COLOR_LABELS: Record<Color, string> = {
@@ -215,5 +216,166 @@ export function AutosaveTags({ tags, onSave, label = 'Tags' }: { tags: string[];
         commit();
       }}
     />
+  );
+}
+
+/** A highlight's quote: text with math set apart (as TeX) and thumbnails for images. */
+export function QuoteContent({ a }: { a: Annotation }) {
+  const quote = displayQuote(a);
+  return (
+    <>
+      {quote &&
+        splitMath(quote).map((part, i) =>
+          part.math ? (
+            <code key={i} class={`g-math${part.display ? ' is-display' : ''}`} title="TeX">
+              {part.text}
+            </code>
+          ) : (
+            <span key={i}>{part.text}</span>
+          ),
+        )}
+      {!!a.images?.length && (
+        <span class="g-thumbs">
+          {a.images.map((img, i) =>
+            img.src ? (
+              <img key={i} class="g-thumb" src={img.src} alt={img.alt} title={img.alt || undefined} loading="lazy" referrerpolicy="no-referrer" />
+            ) : (
+              <span key={i} class="g-thumb is-missing">
+                {img.alt || 'Image'}
+              </span>
+            ),
+          )}
+        </span>
+      )}
+    </>
+  );
+}
+
+/** Dots that show only one color of highlight; only the colors in use are offered. */
+export function ColorFilter({
+  annotations,
+  value,
+  onChange,
+}: {
+  annotations: Annotation[];
+  value: Color | null;
+  onChange: (c: Color | null) => void;
+}) {
+  const counts = new Map<Color, number>();
+  for (const a of annotations) counts.set(a.color, (counts.get(a.color) ?? 0) + 1);
+  const used = COLORS.filter((c) => counts.has(c));
+  if (used.length < 2 && !value) return null;
+  return (
+    <div class="g-color-filter" role="group" aria-label="Show only one color">
+      {used.map((c) => (
+        <button
+          type="button"
+          key={c}
+          class={`g-dot g-dot-${c}`}
+          aria-label={`Only ${COLOR_LABELS[c].toLowerCase()} highlights (${counts.get(c)})`}
+          title={`${COLOR_LABELS[c]} · ${counts.get(c)}`}
+          aria-pressed={value === c}
+          onClick={() => onChange(value === c ? null : c)}
+        />
+      ))}
+      {value && (
+        <button type="button" class="g-link-btn g-filter-clear" onClick={() => onChange(null)}>
+          Show all
+        </button>
+      )}
+    </div>
+  );
+}
+
+/** Indented label for a folder path in a list: "Research/ML" → "   ML". */
+export function folderLabel(path: string): string {
+  const parts = path.split('/');
+  return `${'\u00a0\u00a0\u00a0'.repeat(parts.length - 1)}${parts[parts.length - 1]}`;
+}
+
+const NEW_FOLDER = '\u0000new';
+
+/** Choose a folder for a page, or type a new one ("/" makes subfolders). */
+export function FolderPicker({
+  value,
+  folders,
+  onChange,
+  label = 'Folder',
+}: {
+  value: string | undefined;
+  folders: string[];
+  onChange: (folder: string) => void;
+  label?: string;
+}) {
+  const [creating, setCreating] = useState(false);
+  const [draft, setDraft] = useState('');
+  const inputRef = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    if (creating) inputRef.current?.focus();
+  }, [creating]);
+  const current = value ?? '';
+  const options = current && !folders.includes(current) ? [...folders, current].sort() : folders;
+
+  if (creating) {
+    const commit = () => {
+      const folder = normalizeFolder(draft);
+      setCreating(false);
+      setDraft('');
+      if (folder) onChange(folder);
+    };
+    return (
+      <div class="g-folder-new">
+        <input
+          ref={inputRef}
+          class="g-input"
+          aria-label="New folder name"
+          placeholder="Folder name (use / for subfolders)"
+          value={draft}
+          onInput={(e) => setDraft(e.currentTarget.value)}
+          onKeyDown={(e) => {
+            e.stopPropagation();
+            if (e.key === 'Enter') {
+              e.preventDefault();
+              commit();
+            } else if (e.key === 'Escape') {
+              e.preventDefault();
+              setCreating(false);
+            }
+          }}
+          onKeyUp={(e) => e.stopPropagation()}
+        />
+        <button type="button" class="g-btn g-btn-primary" onClick={commit}>
+          Add
+        </button>
+        <button type="button" class="g-btn" onClick={() => setCreating(false)}>
+          Cancel
+        </button>
+      </div>
+    );
+  }
+  return (
+    <select
+      class="g-input g-select"
+      aria-label={label}
+      value={current}
+      onChange={(e) => {
+        const v = e.currentTarget.value;
+        if (v === NEW_FOLDER) {
+          e.currentTarget.value = current;
+          setDraft(current ? `${current}/` : '');
+          setCreating(true);
+        } else if (v !== current) {
+          onChange(v);
+        }
+      }}
+    >
+      <option value="">No folder</option>
+      {options.map((f) => (
+        <option key={f} value={f}>
+          {f.replace(/\//g, ' › ')}
+        </option>
+      ))}
+      <option value={NEW_FOLDER}>New folder…</option>
+    </select>
   );
 }

@@ -1,5 +1,5 @@
 import { toBackup } from '../shared/backup';
-import { markdownFilenames, pageToMarkdown } from '../shared/markdown';
+import { markdownFilenames, markdownPath, pageToMarkdown } from '../shared/markdown';
 import type { Page } from '../shared/types';
 import { createZip } from '../shared/zip';
 
@@ -18,16 +18,17 @@ function stamp(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
-export function exportMarkdownZip(pages: Page[], highlightLinks: boolean): void {
+/** Downloads pages as a .zip of Markdown files, one subfolder per Annonote folder. */
+export function exportMarkdownZip(pages: Page[], highlightLinks: boolean, name = 'annonote-markdown'): void {
   const names = markdownFilenames(pages);
   const zip = createZip(
     pages.map((p) => ({
-      name: names.get(p.key)!,
+      name: markdownPath(p, names.get(p.key)!),
       data: pageToMarkdown(p, { highlightLinks }),
       date: new Date(p.updated),
     })),
   );
-  downloadBlob(new Blob([zip as BlobPart], { type: 'application/zip' }), `annonote-markdown-${stamp()}.zip`);
+  downloadBlob(new Blob([zip as BlobPart], { type: 'application/zip' }), `${name}-${stamp()}.zip`);
 }
 
 export function exportMarkdownFile(page: Page, highlightLinks: boolean): void {

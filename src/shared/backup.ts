@@ -1,6 +1,8 @@
 import {
   COLORS,
+  normalizeFolder,
   nowIso,
+  type AnnotationImage,
   type Color,
   type Page,
   type Selector,
@@ -42,7 +44,7 @@ interface W3CAnnotation {
   modified: string;
   body: TextualBody[];
   target: { source: string; selector: Selector[] };
-  annonote: { pageKey: string; color: Color; text?: string };
+  annonote: { pageKey: string; color: Color; text?: string; images?: AnnotationImage[] };
 }
 
 export function toBackup(pages: Page[]): BackupFile {
@@ -60,7 +62,12 @@ export function toBackup(pages: Page[]): BackupFile {
         modified: a.updated,
         body,
         target: { source: page.url, selector: a.selectors },
-        annonote: { pageKey: page.key, color: a.color, ...(a.text ? { text: a.text } : {}) },
+        annonote: {
+          pageKey: page.key,
+          color: a.color,
+          ...(a.text ? { text: a.text } : {}),
+          ...(a.images?.length ? { images: a.images } : {}),
+        },
       });
     }
   }
@@ -97,6 +104,18 @@ function cleanSelectors(raw: unknown): Selector[] {
   return out;
 }
 
+/** Images from an imported file: only web, file and inline image addresses are kept. */
+function imagesField(raw: unknown): { images?: AnnotationImage[] } {
+  if (!Array.isArray(raw)) return {};
+  const images: AnnotationImage[] = [];
+  for (const img of raw) {
+    if (!isObject(img)) continue;
+    const src = str(img.src);
+    images.push({ ...(/^(https?:|file:|data:image\/)/i.test(src) ? { src } : {}), alt: str(img.alt) });
+  }
+  return images.length ? { images } : {};
+}
+
 function toColor(v: unknown): Color {
   return (COLORS as readonly string[]).includes(v as string) ? (v as Color) : 'yellow';
 }
@@ -126,6 +145,7 @@ function fromAnnonoteBackup(file: Record<string, unknown>): Page[] {
       published: typeof raw.published === 'string' ? raw.published : undefined,
       pageNote: str(raw.pageNote),
       tags: Array.isArray(raw.tags) ? raw.tags.filter((t): t is string => typeof t === 'string') : [],
+      folder: normalizeFolder(str(raw.folder)) || undefined,
       notion: isObject(raw.notion) && typeof raw.notion.pageId === 'string' ? (raw.notion as unknown as Page['notion']) : undefined,
     });
   }
@@ -156,6 +176,7 @@ function fromAnnonoteBackup(file: Record<string, unknown>): Page[] {
       tags: bodies.filter((b) => b.purpose === 'tagging').map((b) => str(b.value)).filter(Boolean),
       selectors,
       ...(typeof extra.text === 'string' && extra.text ? { text: extra.text } : {}),
+      ...imagesField(extra.images),
     });
   }
   return [...pages.values()];

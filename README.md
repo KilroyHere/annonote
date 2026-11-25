@@ -3,7 +3,14 @@
 A browser extension for highlighting and annotating any web page. Your notes stay on your computer
 and export cleanly to Markdown (Obsidian, any editor) and Notion.
 
-- **Highlight in five colors.** Add notes and tags, plus a note and tags for the page as a whole.
+- **Highlight in five colors.** Add notes and tags, plus a note and tags for the page as a whole. Filter a page's
+  highlights by color in the sidebar or on its library card.
+- **Math and images.** Formulas rendered with KaTeX, MathJax, native MathML or Wikipedia's math images are saved
+  as their TeX source (`$…$`) and outlined on the page. Hover over an image or a display equation and click
+  **Highlight** to mark it on its own; images show as thumbnails and export as Markdown images.
+- **Folders.** Put pages in folders (and subfolders, with `/`) from the sidebar or the library. In the library,
+  pick a folder to see its pages, and the tag filter then works within it. Drag pages onto folders to move them.
+- **Night mode.** Light, night, or follow the system: the moon button in the library, or Settings → Appearance.
 - **Highlights that survive page changes.** Each one is stored as a quote with surrounding context (W3C Web Annotation selectors)
   and found again with fuzzy matching when the wording changes. If a passage disappears, the quote and
   your note are kept and listed under *Not found on this page*.
@@ -13,11 +20,12 @@ and export cleanly to Markdown (Obsidian, any editor) and Notion.
   unless you send it to Notion. The sidebar sits in a closed shadow root that page scripts can't read.
 - **One library for everything.** Search across pages, quotes, notes and tags; filter by tag or color; edit anything.
 - **Exports**
-  - **Markdown**: one file per page with YAML front matter, highlights as blockquotes, and
+  - **Markdown**: one file per page (inside a subfolder per folder in the `.zip`) with YAML front matter, highlights as blockquotes, and
     "jump to highlight" links (`#:~:text=` URL fragments) that open the page at the passage in Chrome, Edge
     and Safari, even without the extension. Copy, download one file, or download everything as a `.zip`.
   - **Notion**: each page becomes a row in a database you choose; highlights become colored quote
-    blocks with your notes nested underneath. Sending again updates only what changed.
+    blocks with your notes nested underneath, math becomes Notion equations and web images become image
+    blocks. Sending again updates only what changed.
   - **JSON backup**: a W3C `AnnotationCollection` you can restore from.
 - **Import** an Annonote backup or your **Hypothesis** annotations (via the API or an exported JSON file).
 
@@ -56,7 +64,7 @@ To use Annonote on local files (`file://`), turn on **Allow access to file URLs*
 2. In Notion, open (or create) a database, then **••• → Connections** and add the integration.
 3. In the Annonote library → **Settings**, paste the secret and the database link, and click **Connect**.
 
-Annonote adds `URL`, `Tags` and `Saved` columns if the database doesn't have them. It remembers which Notion
+Annonote adds `URL`, `Tags`, `Saved` and `Folder` columns if the database doesn't have them. It remembers which Notion
 blocks belong to which highlight, so re-sending a page rewrites only edited highlights, removes deleted ones and
 inserts new ones in page order. If you delete the Notion page, the next send creates a new one.
 
@@ -67,8 +75,9 @@ src/
   content/      Runs in each web page
     controller.ts   selection → highlight → storage; re-anchoring on DOM changes and SPA navigation
     anchoring.ts    DOM ⇄ text offsets; describe a selection / find it again
+    atoms.ts        math and images as single units: TeX extraction (KaTeX, MathJax 2/3, MathML, Wikipedia)
     locate.ts       position → exact → fuzzy (approx-string-match) search with context scoring
-    highlighter.ts  CSS Custom Highlight API painting and hit-testing
+    highlighter.ts  CSS Custom Highlight API painting, overlay boxes for math/images, hit-testing
     App.tsx         toolbar, sidebar, toasts (Preact, in a shadow root)
   background/   Service worker
     db.ts           chrome.storage.local, serialized writes, lookup by URL / canonical URL / DOI
@@ -81,6 +90,12 @@ src/
 **Finding a page's notes.** Pages are stored under a normalized URL: tracking parameters (`utm_*`,
 `fbclid`, …) and anchors are dropped and the query is sorted. A page you open at another address is
 also matched by its `<link rel="canonical">` or DOI, so the same article on a mirror or AMP page shows your highlights.
+
+**Math and images.** Math renderers keep several copies of a formula in the page (visible glyphs, hidden MathML,
+the TeX source), and MathJax draws its glyphs with CSS so there's no text at all. Annonote treats each formula and
+each image as one unit: in the page text a formula is its TeX (`$…$`, `$$…$$` for display math) and an image is
+U+FFFC. Highlights are painted with the Custom Highlight API for the text around them and with boxes drawn in the
+extension's own shadow root over the formulas and images.
 
 **Finding a highlight again.** Each highlight stores the exact quote with 32 characters of context on each side,
 plus its character offsets. When the page loads, Annonote tries the stored offsets first, then exact matches

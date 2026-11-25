@@ -2,6 +2,68 @@
   all: initial;
 }
 
+/* Boxes over highlighted math and images ---------------------------------- */
+.g-overlays {
+  position: fixed;
+  inset: 0;
+  width: 0;
+  height: 0;
+  pointer-events: none;
+}
+
+.g-overlay {
+  position: fixed;
+  pointer-events: none;
+  border-radius: 5px;
+  border: 2px solid;
+  transition: box-shadow 0.15s;
+}
+
+.g-overlay[hidden] {
+  display: none;
+}
+
+.g-overlay-yellow { background: rgba(255, 212, 0, 0.22); border-color: rgba(230, 180, 0, 0.9); }
+.g-overlay-green { background: rgba(52, 199, 89, 0.18); border-color: rgba(40, 170, 75, 0.9); }
+.g-overlay-blue { background: rgba(10, 132, 255, 0.16); border-color: rgba(10, 120, 240, 0.9); }
+.g-overlay-pink { background: rgba(255, 55, 140, 0.16); border-color: rgba(236, 61, 121, 0.9); }
+.g-overlay-purple { background: rgba(160, 90, 255, 0.18); border-color: rgba(140, 80, 230, 0.9); }
+
+.g-overlay.is-active {
+  box-shadow: 0 0 0 3px rgba(255, 140, 0, 0.85);
+}
+
+/* Sidebar section heading with the color filter beside it */
+.g-section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 22px;
+}
+
+/* "Highlight" button over a hovered image or equation --------------------- */
+.g-media-btn {
+  position: fixed;
+  transform: translateX(-100%);
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 9px;
+  font: 600 12px/1 var(--g-font);
+  color: var(--g-text);
+  background: var(--g-bg);
+  border: 1px solid var(--g-border);
+  border-radius: 8px;
+  box-shadow: var(--g-shadow);
+  cursor: pointer;
+  animation: g-pop 0.12s ease-out;
+}
+
+.g-media-btn:hover {
+  background: var(--g-bg-hover);
+}
+
 /* Selection toolbar ------------------------------------------------------ */
 .g-toolbar {
   position: fixed;

@@ -18,6 +18,12 @@ export interface TextPositionSelector {
 
 export type Selector = TextQuoteSelector | TextPositionSelector;
 
+/** An image inside a highlight. `src` is left out for very large inline images. */
+export interface AnnotationImage {
+  src?: string;
+  alt: string;
+}
+
 export interface Annotation {
   id: string;
   created: string;
@@ -30,6 +36,8 @@ export interface Annotation {
   selectors: Selector[];
   /** The quote as rendered when it was highlighted (keeps paragraph breaks). */
   text?: string;
+  /** Images inside the highlight, in page order. */
+  images?: AnnotationImage[];
 }
 
 /** Descriptive data read from the page itself. */
@@ -64,6 +72,8 @@ export interface Page extends PageMeta {
   pageNote: string;
   tags: string[];
   annotations: Annotation[];
+  /** Folder path such as "Research/ML" ("/" separates levels). Unset means not in a folder. */
+  folder?: string;
   notion?: NotionState;
 }
 
@@ -72,12 +82,18 @@ export interface Settings {
   notionDatabaseId: string;
   /** Add "jump to highlight" links (URL text fragments) in exports. */
   highlightLinks: boolean;
+  /** Light or dark (night) appearance for the sidebar, library and popup; "system" follows the OS. */
+  theme: Theme;
 }
+
+export const THEMES = ['system', 'light', 'dark'] as const;
+export type Theme = (typeof THEMES)[number];
 
 export const DEFAULT_SETTINGS: Settings = {
   notionToken: '',
   notionDatabaseId: '',
   highlightLinks: true,
+  theme: 'system',
 };
 
 export function quoteOf(a: Annotation): TextQuoteSelector {
@@ -118,4 +134,24 @@ export function newId(): string {
 
 export function nowIso(): string {
   return new Date().toISOString();
+}
+
+/** Cleans a user-typed folder path: trims each level, drops empty ones. "" means no folder. */
+export function normalizeFolder(input: string | undefined | null): string {
+  return (input ?? '')
+    .split('/')
+    .map((part) => part.replace(/\s+/g, ' ').trim())
+    .filter(Boolean)
+    .join('/');
+}
+
+/** A folder and every folder above it: "a/b/c" → ["a", "a/b", "a/b/c"]. */
+export function folderAncestors(folder: string): string[] {
+  const parts = folder.split('/').filter(Boolean);
+  return parts.map((_, i) => parts.slice(0, i + 1).join('/'));
+}
+
+/** True if `folder` is `parent` or inside it. */
+export function inFolder(folder: string | undefined, parent: string): boolean {
+  return !!folder && (folder === parent || folder.startsWith(`${parent}/`));
 }

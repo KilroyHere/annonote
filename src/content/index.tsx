@@ -22,7 +22,16 @@ function main() {
   window.__annonoteLoaded = true;
 
   let host: HTMLElement | null = null;
+  let overlays: HTMLElement | null = null;
+  let container: HTMLElement | null = null;
   const controller = new Controller((e) => !!host && e.composedPath().includes(host));
+
+  const applyTheme = () => {
+    if (!container) return;
+    const { theme } = controller.state.settings;
+    if (theme === 'system') delete container.dataset.theme;
+    else container.dataset.theme = theme;
+  };
 
   const mount = () => {
     if (host) return;
@@ -35,16 +44,27 @@ function main() {
     const style = document.createElement('style');
     style.textContent = componentsCss + sidebarCss;
     shadow.appendChild(style);
-    const container = document.createElement('div');
+    // Boxes over highlighted math and images sit under the toolbar and sidebar.
+    overlays = document.createElement('div');
+    overlays.className = 'g-overlays';
+    shadow.appendChild(overlays);
+    container = document.createElement('div');
     container.className = 'g-root';
     shadow.appendChild(container);
+    applyTheme();
     document.documentElement.appendChild(host);
     render(<App c={controller} root={shadow} />, container);
   };
 
+  controller.setOverlayLayer(() => {
+    mount();
+    return overlays!;
+  });
+
   controller.subscribe(() => {
     const s = controller.state;
-    if (!host && (s.toolbar || s.sidebarOpen || s.toast)) mount();
+    if (!host && (s.toolbar || s.sidebarOpen || s.toast || s.media)) mount();
+    applyTheme();
   });
 
   controller.start().catch((err: unknown) => {

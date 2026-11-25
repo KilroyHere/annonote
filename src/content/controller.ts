@@ -3,7 +3,8 @@ import { send, type AnnotationPatch, type PublicSettings, type TabMessage, type 
 import { cleanQuote } from '../shared/quote';
 import { newId, nowIso, type Annotation, type Color, type Page, type PageMeta } from '../shared/types';
 import { cleanUrl, normalizeUrl } from '../shared/url';
-import { anchor, buildTextMap, describe, rangeFromSpan } from './anchoring';
+import { anchor, buildTextMap, describe, rangeFromSpan, renderSpan, spanHasAtoms } from './anchoring';
+import { atomAncestor, atomOf } from './atoms';
 import { Highlighter } from './highlighter';
 import { readPageMeta } from './meta';
 
@@ -11,6 +12,15 @@ export interface ToolbarState {
   x: number;
   y: number;
   placement: 'above' | 'below';
+}
+
+/** The "highlight this" button shown over an image or a display equation. */
+export interface MediaButtonState {
+  x: number;
+  y: number;
+  kind: 'image' | 'math';
+  /** Already highlighted: the button opens this highlight's note instead. */
+  existingId: string | null;
 }
 
 export interface Toast {
@@ -29,6 +39,11 @@ export interface ViewState {
   editingId: string | null;
   focusId: string | null;
   toolbar: ToolbarState | null;
+  media: MediaButtonState | null;
+  /** Sidebar shows only highlights of this color. */
+  colorFilter: Color | null;
+  /** All folders, for the sidebar's folder picker. */
+  folders: string[];
   settings: PublicSettings;
   toast: Toast | null;
   busy: 'notion' | null;
@@ -37,6 +52,9 @@ export interface ViewState {
 const REANCHOR_DELAY = 700;
 const EDITABLE = 'input, textarea, select, [contenteditable=""], [contenteditable="true"], [contenteditable="plaintext-only"]';
 const INTERACTIVE = 'a, button, input, textarea, select, label, summary, [contenteditable], [role="button"], [role="link"]';
+/** Images smaller than this (icons, emoji) get no hover button. */
+const MIN_MEDIA_WIDTH = 60;
+const MIN_MEDIA_HEIGHT = 40;
 
 export class Controller {
   state: ViewState = {
@@ -46,7 +64,10 @@ export class Controller {
     editingId: null,
     focusId: null,
     toolbar: null,
-    settings: { highlightLinks: true, notionConfigured: false },
+    media: null,
+    colorFilter: null,
+    folders: [],
+    settings: { highlightLinks: true, notionConfigured: false, theme: 'system' },
     toast: null,
     busy: null,
   };
@@ -60,6 +81,10 @@ export class Controller {
   private storedKey: string | undefined;
   private urlKey = normalizeUrl(location.href);
   private selectionRange: Range | null = null;
+  /** The toolbar was opened for a whole image or equation rather than a text selection. */
+  private elementSelection = false;
+  private mediaEl: Element | null = null;
+  private mediaTimer: number | undefined;
   private observer: MutationObserver | null = null;
   private reanchorTimer: number | undefined;
   private lookupTimer: number | undefined;
@@ -68,6 +93,11 @@ export class Controller {
   private generation = 0;
 
   constructor(private readonly isOwnEvent: (e: Event) => boolean) {}
+
+  /** Where boxes over highlighted math and images are drawn (in the extension's shadow root). */
+  setOverlayLayer(layer: () => HTMLElement): void {
+    this.hl.setLayer(layer);
+  }
 
   subscribe(fn: () => void): () => void {
     this.listeners.add(fn);
@@ -87,6 +117,7 @@ export class Controller {
     document.addEventListener('keyup', this.onKeyUp, true);
     document.addEventListener('click', this.onClick, true);
     document.addEventListener('selectionchange', this.onSelectionChange);
+    document.addEventListener('pointerover', this.onPointerOver, { passive: true });
     window.addEventListener('scroll', this.onScroll, { capture: true, passive: true });
     window.addEventListener('resize', this.onScroll, { passive: true });
     chrome.runtime.onMessage.addListener(this.onMessage);
@@ -116,7 +147,7 @@ export class Controller {
     this.hl.render();
     this.anchoredText.clear();
     this.storedKey = undefined;
-    this.update({ page: null, orphans: new Set(), editingId: null, focusId: null, toolbar: null });
+    this.update({ page: null, orphans: new Set(), editingId: null, focusId: null, toolbar: null, media: null, colorFilter: null });
     void this.load().catch(() => undefined);
   };
 
@@ -210,15 +241,79 @@ export class Controller {
   };
 
   private readonly onSelectionChange = () => {
-    if (this.state.toolbar && (document.getSelection()?.isCollapsed ?? true)) {
+    if (this.state.toolbar && !this.elementSelection && (document.getSelection()?.isCollapsed ?? true)) {
       this.selectionRange = null;
       this.update({ toolbar: null });
     }
   };
 
   private readonly onScroll = () => {
+    this.hl.reposition();
     if (this.state.toolbar && this.selectionRange) this.update({ toolbar: this.toolbarPosition(this.selectionRange) });
+    if (this.state.media) this.hideMedia();
   };
+
+  // -------------------------------------------------------------------------
+  // Hover button for images and display equations
+
+  /** The image or display equation under the pointer, if it can be highlighted on its own. */
+  private mediaTarget(target: EventTarget | null): { el: Element; kind: 'image' | 'math' } | null {
+    if (!(target instanceof Element) || !document.body.contains(target) || target.closest(EDITABLE)) return null;
+    const el = atomAncestor(target);
+    if (!el) return null;
+    const atom = atomOf(el);
+    if (!atom || (atom.kind === 'math' && !atom.display)) return null;
+    const rect = el.getBoundingClientRect();
+    if (atom.kind === 'image' && (rect.width < MIN_MEDIA_WIDTH || rect.height < MIN_MEDIA_HEIGHT)) return null;
+    return { el, kind: atom.kind };
+  }
+
+  private readonly onPointerOver = (e: PointerEvent) => {
+    if (this.isOwnEvent(e)) {
+      window.clearTimeout(this.mediaTimer);
+      return;
+    }
+    const hit = e.pointerType === 'touch' ? null : this.mediaTarget(e.target);
+    if (!hit) {
+      if (this.state.media) {
+        window.clearTimeout(this.mediaTimer);
+        this.mediaTimer = window.setTimeout(() => this.hideMedia(), 350);
+      }
+      return;
+    }
+    window.clearTimeout(this.mediaTimer);
+    if (hit.el === this.mediaEl && this.state.media) return;
+    this.mediaEl = hit.el;
+    const rect = hit.el.getBoundingClientRect();
+    const x = Math.min(Math.max(rect.right - 8, 90), window.innerWidth - 8);
+    const y = Math.min(Math.max(rect.top + 8, 8), window.innerHeight - 40);
+    this.update({ media: { x, y, kind: hit.kind, existingId: this.hl.idForAtom(hit.el) } });
+  };
+
+  private hideMedia(): void {
+    window.clearTimeout(this.mediaTimer);
+    this.mediaEl = null;
+    if (this.state.media) this.update({ media: null });
+  }
+
+  /** Opens the color toolbar for the hovered image or equation as a whole. */
+  selectMedia(): void {
+    const el = this.mediaEl;
+    const existing = this.state.media?.existingId;
+    this.hideMedia();
+    if (existing && this.state.page?.annotations.some((a) => a.id === existing)) {
+      this.focus(existing, false);
+      this.setEditing(existing);
+      return;
+    }
+    if (!el?.isConnected) return;
+    const range = document.createRange();
+    range.selectNode(el);
+    document.getSelection()?.removeAllRanges();
+    this.selectionRange = range;
+    this.elementSelection = true;
+    this.update({ toolbar: this.toolbarPosition(range) });
+  }
 
   /** The current page selection, if it is something we can highlight. */
   private usableSelection(): Range | null {
@@ -244,6 +339,7 @@ export class Controller {
 
   private refreshToolbar(): void {
     const range = this.usableSelection();
+    this.elementSelection = false;
     this.selectionRange = range?.cloneRange() ?? null;
     this.update({ toolbar: range ? this.toolbarPosition(range) : null });
   }
@@ -264,11 +360,19 @@ export class Controller {
   focus(id: string, scrollPage: boolean): void {
     this.hl.flash(id);
     if (scrollPage) {
-      const range = this.hl.range(id);
-      const el = range?.startContainer.parentElement;
-      el?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      this.hl.element(id)?.scrollIntoView({ block: 'center', behavior: 'smooth' });
     }
-    this.update({ sidebarOpen: true, focusId: id });
+    if (!this.state.sidebarOpen) void this.loadFolders();
+    const filtered = this.state.colorFilter && this.state.page?.annotations.find((a) => a.id === id)?.color !== this.state.colorFilter;
+    this.update({ sidebarOpen: true, focusId: id, ...(filtered ? { colorFilter: null } : {}) });
+  }
+
+  private async loadFolders(): Promise<void> {
+    try {
+      this.update({ folders: await send({ type: 'folders:list' }) });
+    } catch {
+      /* the folder list is a convenience; the picker still works with typed names */
+    }
   }
 
   // -------------------------------------------------------------------------
@@ -282,6 +386,7 @@ export class Controller {
         break;
       case 'sidebar:open':
         this.update({ sidebarOpen: true });
+        void this.loadFolders();
         break;
       case 'status': {
         const status: TabStatus = {
@@ -299,6 +404,7 @@ export class Controller {
   private readonly onStorageChanged = (changes: Record<string, chrome.storage.StorageChange>, area: string) => {
     if (area !== 'local') return;
     if (changes.settings) void send({ type: 'settings:public' }).then((settings) => this.update({ settings }));
+    if (changes.folders && this.state.sidebarOpen) void this.loadFolders();
     const key = this.storedKey;
     if (key) {
       if (changes[`page:${key}`]) this.setPage((changes[`page:${key}`]!.newValue as Page | undefined) ?? null);
@@ -318,6 +424,7 @@ export class Controller {
 
   toggleSidebar(open = !this.state.sidebarOpen): void {
     this.update({ sidebarOpen: open, focusId: null });
+    if (open) void this.loadFolders();
   }
 
   setEditing(id: string | null): void {
@@ -325,7 +432,7 @@ export class Controller {
   }
 
   async createFromSelection(color: Color, withNote: boolean): Promise<void> {
-    const range = this.usableSelection() ?? this.selectionRange;
+    const range = (this.elementSelection ? null : this.usableSelection()) ?? this.selectionRange;
     if (!range) {
       if (withNote) this.toggleSidebar(true);
       return;
@@ -333,7 +440,12 @@ export class Controller {
     const map = buildTextMap(document.body);
     const desc = describe(map, range);
     if (!desc) return;
-    const selectedText = cleanQuote(document.getSelection()?.toString() ?? '');
+    // With math or images inside, the browser's selection text is a jumble of hidden copies:
+    // build the quote from the page text instead (math as $TeX$, images listed separately).
+    const rendered = spanHasAtoms(map, desc.position.start, desc.position.end)
+      ? renderSpan(map, desc.position.start, desc.position.end)
+      : null;
+    const selectedText = cleanQuote(rendered ? rendered.text : (document.getSelection()?.toString() ?? ''));
     const now = nowIso();
     const annotation: Annotation = {
       id: newId(),
@@ -344,6 +456,7 @@ export class Controller {
       tags: [],
       selectors: [desc.quote, desc.position],
       ...(selectedText ? { text: selectedText } : {}),
+      ...(rendered?.images.length ? { images: rendered.images } : {}),
     };
     const highlightRange = rangeFromSpan(map, desc.position.start, desc.position.end);
     if (highlightRange) {
@@ -353,6 +466,7 @@ export class Controller {
     }
     document.getSelection()?.removeAllRanges();
     this.selectionRange = null;
+    this.elementSelection = false;
 
     // Show it straight away; the stored copy replaces this when the save completes.
     const base = this.state.page ?? this.provisionalPage();
@@ -409,10 +523,15 @@ export class Controller {
     }
   }
 
-  async updatePage(patch: { pageNote?: string; tags?: string[] }): Promise<void> {
+  setColorFilter(color: Color | null): void {
+    this.update({ colorFilter: color });
+  }
+
+  async updatePage(patch: { pageNote?: string; tags?: string[]; folder?: string }): Promise<void> {
     try {
       const saved = await send({ type: 'page:update', pageKey: this.storedKey, meta: this.meta, patch });
       this.setPage(saved);
+      if (patch.folder !== undefined) void this.loadFolders();
     } catch (err) {
       this.showToast(`Couldn't save: ${(err as Error).message}`, 'error');
     }

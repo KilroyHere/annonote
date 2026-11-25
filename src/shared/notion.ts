@@ -1,6 +1,6 @@
 import { byPosition, nowIso, quoteOf, type Annotation, type NotionState, type Page } from './types';
-import { displayQuote } from './quote';
-import { textFragmentUrl } from './textFragment';
+import { displayQuote, quoteLabel, splitMath } from './quote';
+import { hasTextFragment, textFragmentUrl } from './textFragment';
 
 /** Pinned API version: page parents are plain database ids and `after` positions appended blocks. */
 export const NOTION_VERSION = '2022-06-28';
@@ -95,16 +95,18 @@ export function parseDatabaseId(input: string): string | null {
 // ---------------------------------------------------------------------------
 // Block builders
 
-type RichText = {
-  type: 'text';
-  text: { content: string; link?: { url: string } | null };
-  annotations?: { color?: string; italic?: boolean };
-};
+type RichText =
+  | {
+      type: 'text';
+      text: { content: string; link?: { url: string } | null };
+      annotations?: { color?: string; italic?: boolean };
+    }
+  | { type: 'equation'; equation: { expression: string } };
 
 function richText(content: string, extra: { link?: string; color?: string; italic?: boolean } = {}): RichText[] {
   const out: RichText[] = [];
   for (let i = 0; i < content.length; i += MAX_TEXT) {
-    const item: RichText = { type: 'text', text: { content: content.slice(i, i + MAX_TEXT) } };
+    const item: Extract<RichText, { type: 'text' }> = { type: 'text', text: { content: content.slice(i, i + MAX_TEXT) } };
     if (extra.link) item.text.link = { url: extra.link };
     if (extra.color || extra.italic) item.annotations = { color: extra.color, italic: extra.italic };
     out.push(item);
@@ -155,11 +157,30 @@ function hashOf(value: unknown): string {
   return (h >>> 0).toString(36) + s.length.toString(36);
 }
 
+/** Quote text with $TeX$ turned into Notion inline equations. */
+function quoteRichText(quote: string): RichText[] {
+  return splitMath(quote).flatMap((part): RichText[] =>
+    part.math ? [{ type: 'equation', equation: { expression: part.text.slice(0, 1000) } }] : richText(part.text),
+  );
+}
+
+function imageBlocks(a: Annotation): object[] {
+  // Notion can only show images it can fetch itself, so inline (data:) and local images are left out.
+  return (a.images ?? [])
+    .filter((img) => img.src && /^https?:/i.test(img.src))
+    .map((img) => ({
+      object: 'block',
+      type: 'image',
+      image: { type: 'external', external: { url: img.src }, ...(img.alt ? { caption: richText(img.alt.slice(0, MAX_TEXT)) } : {}) },
+    }));
+}
+
 function annotationBlock(page: Page, a: Annotation, opts: SyncOptions): object {
   const quote = displayQuote(a);
-  const rt = richText(quote);
-  if (opts.highlightLinks) rt.push(...richText(' ↗', { link: textFragmentUrl(page.url, quote) }));
-  const children = noteParagraphs(a.note, MAX_CHILDREN - 1);
+  const rt = quote ? quoteRichText(quote) : richText(quoteLabel(a), { italic: true });
+  if (opts.highlightLinks && hasTextFragment(quote)) rt.push(...richText(' ↗', { link: textFragmentUrl(page.url, quote) }));
+  const images = imageBlocks(a);
+  const children = [...images, ...noteParagraphs(a.note, MAX_CHILDREN - 1 - images.length)];
   if (a.tags.length) children.push(paragraph(tagLine(a.tags)));
   const block: Record<string, unknown> = { rich_text: rt.slice(0, 100), color: `${a.color}_background` };
   if (children.length) block.children = children;
@@ -195,15 +216,17 @@ export interface Schema {
   urlProp?: string;
   tagsProp?: string;
   savedProp?: string;
+  folderProp?: string;
 }
 
-const WANTED: Record<'urlProp' | 'tagsProp' | 'savedProp', { name: string; type: string }> = {
+const WANTED: Record<'urlProp' | 'tagsProp' | 'savedProp' | 'folderProp', { name: string; type: string }> = {
   urlProp: { name: 'URL', type: 'url' },
   tagsProp: { name: 'Tags', type: 'multi_select' },
   savedProp: { name: 'Saved', type: 'date' },
+  folderProp: { name: 'Folder', type: 'select' },
 };
 
-/** Reads the database and adds URL / Tags / Saved columns if they are missing. */
+/** Reads the database and adds URL / Tags / Saved / Folder columns if they are missing. */
 export async function ensureSchema(client: NotionClient, databaseId: string): Promise<Schema> {
   const db = await client.request<{ properties: Record<string, { type: string }> }>('GET', `/databases/${databaseId}`);
   const props = db.properties ?? {};
@@ -238,6 +261,7 @@ function buildProperties(page: Page, schema: Schema, tags: string[]): Record<str
     props[schema.tagsProp] = { multi_select: tags.map((t) => ({ name: t.replace(/,/g, ' ').slice(0, 100) })) };
   }
   if (schema.savedProp) props[schema.savedProp] = { date: { start: page.created.slice(0, 10) } };
+  if (schema.folderProp) props[schema.folderProp] = { select: page.folder ? { name: page.folder.replace(/,/g, ' ').slice(0, 100) } : null };
   return props;
 }
 

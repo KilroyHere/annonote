@@ -1,5 +1,16 @@
 import type { AnnotationPatch, ImportResult, PagePatch } from '../shared/messages';
-import { DEFAULT_SETTINGS, nowIso, type Annotation, type NotionState, type Page, type PageMeta, type Settings } from '../shared/types';
+import {
+  DEFAULT_SETTINGS,
+  folderAncestors,
+  inFolder,
+  normalizeFolder,
+  nowIso,
+  type Annotation,
+  type NotionState,
+  type Page,
+  type PageMeta,
+  type Settings,
+} from '../shared/types';
 import { cleanUrl, normalizeDoi, normalizeUrl, usableCanonical } from '../shared/url';
 
 /**
@@ -7,12 +18,14 @@ import { cleanUrl, normalizeDoi, normalizeUrl, usableCanonical } from '../shared
  *   page:<normalized url>  → Page (with its annotations)
  *   index                  → { [pageKey]: { canonical?, doi? } } for lookups by canonical URL / DOI
  *   settings               → Settings
+ *   folders                → string[] of folder paths the user created (folders with pages in them are also listed)
  * All writes go through `withLock` so concurrent edits from several tabs cannot clobber each other.
  */
 
 export const PAGE_PREFIX = 'page:';
 const INDEX_KEY = 'index';
 export const SETTINGS_KEY = 'settings';
+const FOLDERS_KEY = 'folders';
 
 type Index = Record<string, { canonical?: string; doi?: string }>;
 
@@ -81,7 +94,7 @@ async function removePage(key: string): Promise<void> {
 }
 
 function isEmpty(page: Page): boolean {
-  return page.annotations.length === 0 && !page.pageNote.trim() && page.tags.length === 0;
+  return page.annotations.length === 0 && !page.pageNote.trim() && page.tags.length === 0 && !page.folder;
 }
 
 function newPage(key: string, meta: PageMeta): Page {
@@ -171,6 +184,7 @@ export function updatePage(pageKey: string | undefined, meta: PageMeta | undefin
     if (patch.pageNote !== undefined) page.pageNote = patch.pageNote;
     if (patch.tags !== undefined) page.tags = patch.tags;
     if (patch.title !== undefined) page.title = patch.title;
+    if (patch.folder !== undefined) setFolder(page, patch.folder);
     page.updated = nowIso();
     if (isEmpty(page) && !page.notion) {
       if (await getPage(page.key)) await removePage(page.key);
@@ -204,8 +218,11 @@ export function importPages(pages: Page[]): Promise<ImportResult> {
       const key = incoming.key || normalizeUrl(incoming.url);
       const existing = await getPage(key);
       if (!existing) {
+        const folder = normalizeFolder(incoming.folder);
+        const { folder: _folder, ...rest } = incoming;
         await putPage({
-          ...incoming,
+          ...rest,
+          ...(folder ? { folder } : {}),
           key,
           canonical: usableCanonical(incoming.canonical, incoming.url),
           doi: normalizeDoi(incoming.doi),
@@ -237,6 +254,10 @@ export function importPages(pages: Page[]): Promise<ImportResult> {
           changed = true;
         }
       }
+      if (!existing.folder && normalizeFolder(incoming.folder)) {
+        existing.folder = normalizeFolder(incoming.folder);
+        changed = true;
+      }
       if (!existing.title && incoming.title) {
         existing.title = incoming.title;
         changed = true;
@@ -248,5 +269,95 @@ export function importPages(pages: Page[]): Promise<ImportResult> {
       }
     }
     return result;
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Folders
+
+function setFolder(page: Page, folder: string): void {
+  const clean = normalizeFolder(folder);
+  if (clean) page.folder = clean;
+  else delete page.folder;
+}
+
+async function storedFolders(): Promise<string[]> {
+  const { [FOLDERS_KEY]: f } = await storage().get(FOLDERS_KEY);
+  return Array.isArray(f) ? f.filter((x): x is string => typeof x === 'string') : [];
+}
+
+/** Every folder: the ones created explicitly, the ones pages are in, and all their parents. */
+export async function listFolders(): Promise<string[]> {
+  const all = new Set<string>();
+  const add = (f: string | undefined) => {
+    const clean = normalizeFolder(f);
+    if (clean) for (const a of folderAncestors(clean)) all.add(a);
+  };
+  for (const f of await storedFolders()) add(f);
+  for (const p of await listPages()) add(p.folder);
+  return [...all].sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base', numeric: true }));
+}
+
+export function addFolder(path: string): Promise<string[]> {
+  return withLock(async () => {
+    const clean = normalizeFolder(path);
+    if (!clean) throw new Error('Enter a folder name.');
+    const stored = await storedFolders();
+    if (!stored.includes(clean)) await storage().set({ [FOLDERS_KEY]: [...stored, clean] });
+    return listFolders();
+  });
+}
+
+function reparent(folder: string, from: string, to: string): string {
+  return normalizeFolder(to + folder.slice(from.length));
+}
+
+/** Renames a folder (and everything inside it). Renaming onto an existing folder merges the two. */
+export function renameFolder(from: string, to: string): Promise<string[]> {
+  return withLock(async () => {
+    const src = normalizeFolder(from);
+    const dest = normalizeFolder(to);
+    if (!src || !dest) throw new Error('Enter a folder name.');
+    if (inFolder(dest, src) && dest !== src) throw new Error("A folder can't be moved inside itself.");
+    const stored = await storedFolders();
+    const next = [...new Set(stored.map((f) => (inFolder(f, src) ? reparent(f, src, dest) : f)).concat(dest))];
+    await storage().set({ [FOLDERS_KEY]: next });
+    for (const page of await listPages()) {
+      if (inFolder(page.folder, src)) {
+        page.folder = reparent(page.folder!, src, dest);
+        await putPage(page);
+      }
+    }
+    return listFolders();
+  });
+}
+
+/** Deletes a folder and its subfolders. Their pages are kept and move to the parent folder. */
+export function deleteFolder(path: string): Promise<string[]> {
+  return withLock(async () => {
+    const target = normalizeFolder(path);
+    if (!target) return listFolders();
+    const parent = target.includes('/') ? target.slice(0, target.lastIndexOf('/')) : '';
+    const stored = await storedFolders();
+    await storage().set({ [FOLDERS_KEY]: stored.filter((f) => !inFolder(f, target)) });
+    for (const page of await listPages()) {
+      if (inFolder(page.folder, target)) {
+        setFolder(page, parent);
+        await putPage(page);
+      }
+    }
+    return listFolders();
+  });
+}
+
+/** Puts pages in a folder ("" takes them out of any folder). */
+export function movePages(pageKeys: string[], folder: string): Promise<void> {
+  return withLock(async () => {
+    for (const key of pageKeys) {
+      const page = await getPage(key);
+      if (!page) continue;
+      setFolder(page, folder);
+      await putPage(page);
+    }
   });
 }

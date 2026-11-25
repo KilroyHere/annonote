@@ -17,6 +17,7 @@ fs.mkdirSync(OUT, { recursive: true });
 // Fixture server. The article changes between versions to test re-anchoring.
 
 const base = fs.readFileSync(path.join(__dirname, 'fixtures/article.html'), 'utf8');
+const mathHtml = fs.readFileSync(path.join(__dirname, 'fixtures/math.html'), 'utf8');
 let version = 1;
 function articleHtml() {
   let html = base;
@@ -49,6 +50,7 @@ const server = http.createServer((req, res) => {
   res.setHeader('Content-Type', 'text/html; charset=utf-8');
   if (url.pathname === '/article' || url.pathname === '/mirror') return res.end(articleHtml());
   if (url.pathname === '/late') return res.end(lateHtml());
+  if (url.pathname === '/math') return res.end(mathHtml);
   res.statusCode = 404;
   res.end('not found');
 });
@@ -406,6 +408,177 @@ async function storedPages(sw) {
     await lib.locator('.l-toast').filter({ hasText: 'Imported from backup' }).waitFor();
     await eventually(async () => assert.equal(await lib.locator('.l-page').count(), 2));
     await eventually(async () => assert.equal(Object.keys(await highlightCounts(page)).length, 3));
+  });
+
+  console.log('\nMath, images, folders, colors and night mode');
+  const mp = await context.newPage();
+  await mp.goto(`${origin}/math`);
+  await eventually(async () => assert.equal(await mp.evaluate(() => typeof CSS.highlights), 'object'));
+  await mp.waitForTimeout(300);
+  const mathPage = async () => (await storedPages(sw)).find((p) => p.key === `${origin}/math`);
+  const selectContents = (selector) =>
+    mp.evaluate((selector) => {
+      const r = document.createRange();
+      r.selectNodeContents(document.querySelector(selector));
+      getSelection().removeAllRanges();
+      getSelection().addRange(r);
+      document.body.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, composed: true }));
+    }, selector);
+  const visibleOverlays = () => mp.locator('.g-overlay:not([hidden])').count();
+
+  await step('text with KaTeX math is saved with clean TeX and the formula is boxed', async () => {
+    await selectContents('#katex');
+    await mp.locator('.g-toolbar button[aria-label="Yellow"]').click();
+    await eventually(async () => {
+      const p = await mathPage();
+      assert.ok(p, 'page saved');
+      assert.equal(p.annotations[0].text, 'The heat equation $u_t = \\alpha u_{xx}$ describes how temperature spreads through a rod over time.');
+    });
+    await eventually(async () => assert.equal(await visibleOverlays(), 1));
+  });
+
+  await step('MathJax output (no text in the DOM) is highlighted as TeX too', async () => {
+    await selectContents('#mathjax');
+    await mp.locator('.g-toolbar button[aria-label="Green"]').click();
+    await eventually(async () => {
+      const p = await mathPage();
+      assert.ok(p.annotations.some((a) => a.text === 'A random walker spreads out like $\\sqrt{2Dt}$ so its typical distance grows with the square root of time.'));
+    });
+    await eventually(async () => assert.equal(await visibleOverlays(), 2));
+  });
+
+  await step('hovering an image offers a Highlight button that highlights the whole image', async () => {
+    await mp.locator('#plot').hover();
+    await mp.locator('.g-media-btn').click();
+    await mp.locator('.g-toolbar button[aria-label="Blue"]').click();
+    await eventually(async () => {
+      const p = await mathPage();
+      const img = p.annotations.find((a) => a.images);
+      assert.ok(img, 'image highlight saved');
+      assert.equal(img.color, 'blue');
+      assert.equal(img.images[0].alt, 'Concentration profiles spreading over time');
+      assert.ok(img.images[0].src.startsWith('data:image/svg+xml'));
+    });
+    await eventually(async () => assert.equal(await visibleOverlays(), 3));
+  });
+
+  await step('a display equation can be highlighted on its own', async () => {
+    await mp.locator('.katex-display .katex-html').hover();
+    await mp.locator('.g-media-btn').click();
+    await mp.locator('.g-toolbar button[aria-label="Purple"]').click();
+    await eventually(async () => assert.ok((await mathPage()).annotations.some((a) => a.text === '$$E = mc^2$$' && a.color === 'purple')));
+    await eventually(async () => assert.equal(await visibleOverlays(), 4));
+  });
+
+  await step('highlights on math and images come back after reload', async () => {
+    await mp.reload();
+    await eventually(async () => assert.equal(await visibleOverlays(), 4));
+    await eventually(async () => assert.deepEqual(Object.keys(await highlightCounts(mp)).sort(), ['annonote-green', 'annonote-yellow']));
+  });
+
+  await step('the sidebar shows TeX and image thumbnails; clicking a boxed image opens its card', async () => {
+    const box = await mp.locator('#plot').boundingBox();
+    await mp.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+    await mp.locator('.g-card.is-focused .g-thumb').waitFor();
+    // The hover button on an image that is already highlighted opens its note rather than adding a duplicate.
+    await mp.locator('.g-media-btn').filter({ hasText: 'Note' }).waitFor();
+    assert.equal(await mp.locator('.g-card .g-math').count(), 3);
+    await mp.screenshot({ path: path.join(OUT, '8-math-images.png') });
+  });
+
+  await step('color filter in the sidebar shows one color at a time', async () => {
+    await mp.locator('.g-color-filter button[aria-label^="Only blue"]').click();
+    await eventually(async () => assert.equal(await mp.locator('.g-cards .g-card').count(), 1));
+    await mp.locator('.g-color-filter').getByRole('button', { name: 'Show all' }).click();
+    await eventually(async () => assert.equal(await mp.locator('.g-cards .g-card').count(), 4));
+  });
+
+  await step('a page can be put in a new folder from the sidebar', async () => {
+    const picker = mp.getByLabel('Folder for this page');
+    await picker.selectOption({ label: 'New folder…' });
+    await mp.getByLabel('New folder name').fill('Physics / Diffusion');
+    await mp.getByLabel('New folder name').press('Enter');
+    await eventually(async () => assert.equal((await mathPage()).folder, 'Physics/Diffusion'));
+    await eventually(async () => assert.equal(await mp.getByLabel('Folder for this page').inputValue(), 'Physics/Diffusion'));
+  });
+
+  await step('library: folders replace the color filter; choosing one narrows pages and tags', async () => {
+    await lib.reload();
+    await lib.locator('.l-page').first().waitFor();
+    assert.equal(await lib.locator('.l-color-filter').count(), 0);
+    const folderNames = await lib.locator('.l-folder .l-folder-name').allInnerTexts();
+    assert.deepEqual(folderNames, ['All pages', 'Not in a folder', 'Physics', 'Diffusion']);
+    await lib.locator('.l-folder', { hasText: 'Physics' }).first().click();
+    await eventually(async () => assert.equal(await lib.locator('.l-page').count(), 1));
+    await lib.getByRole('heading', { name: 'Tags in this folder' }).waitFor();
+    assert.equal(await lib.locator('.l-tag-filter').count(), 0);
+    await lib.locator('.l-folder', { hasText: 'Not in a folder' }).click();
+    await eventually(async () => assert.equal(await lib.locator('.l-page').count(), 2));
+    assert.ok((await lib.locator('.l-tag-filter').allInnerTexts()).some((t) => t.includes('#geology')));
+  });
+
+  await step('library: make a folder, drag a page onto it, filter by folder + tag', async () => {
+    await lib.getByRole('button', { name: 'New folder' }).click();
+    await lib.getByLabel('Folder name').fill('Geology');
+    await lib.getByLabel('Folder name').press('Enter');
+    const target = lib.locator('.l-folder', { hasText: 'Geology' });
+    await target.waitFor();
+    await lib.locator('.l-page', { hasText: 'Good intro' }).locator('.l-page-head').dragTo(target);
+    await eventually(async () => assert.equal((await storedPages(sw)).find((p) => p.pageNote.startsWith('Good intro')).folder, 'Geology'));
+    await target.click();
+    await lib.locator('.l-tag-filter', { hasText: '#geology' }).click();
+    await eventually(async () => assert.equal(await lib.locator('.l-page').count(), 1));
+    await lib.screenshot({ path: path.join(OUT, '9-library-folders.png') });
+    await lib.getByRole('button', { name: 'Clear filters' }).click();
+  });
+
+  await step('library: rename and delete a folder (its pages are kept)', async () => {
+    await lib.locator('.l-folder-item', { hasText: 'Geology' }).hover();
+    await lib.getByRole('button', { name: 'Rename folder Geology' }).click();
+    await lib.getByLabel('Folder name').fill('Earth');
+    await lib.getByLabel('Folder name').press('Enter');
+    await eventually(async () => assert.equal((await storedPages(sw)).find((p) => p.pageNote.startsWith('Good intro')).folder, 'Earth'));
+    lib.once('dialog', (d) => d.accept());
+    await lib.locator('.l-folder-item', { hasText: 'Earth' }).hover();
+    await lib.getByRole('button', { name: 'Delete folder Earth' }).click();
+    await eventually(async () => assert.equal((await storedPages(sw)).find((p) => p.pageNote.startsWith('Good intro')).folder, undefined));
+    assert.equal(await lib.locator('.l-page').count(), 3);
+  });
+
+  await step('library: per-page color filter, TeX and thumbnails on the card', async () => {
+    const card = lib.locator('.l-page', { hasText: 'Notes on Diffusion' });
+    assert.equal(await card.locator('.l-ann').count(), 4);
+    assert.ok((await card.locator('.g-thumb').count()) === 1);
+    await card.locator('.g-color-filter button[aria-label^="Only green"]').click();
+    await eventually(async () => assert.equal(await card.locator('.l-ann').count(), 1));
+    await card.getByRole('button', { name: 'Show all' }).click();
+  });
+
+  await step('Markdown zip puts pages in folder subdirectories with TeX and images', async () => {
+    const [download] = await Promise.all([lib.waitForEvent('download'), lib.getByRole('button', { name: 'Markdown (.zip)' }).click()]);
+    const zip = path.join(OUT, 'folders-' + download.suggestedFilename());
+    await download.saveAs(zip);
+    const listing = execFileSync('unzip', ['-l', zip], { encoding: 'utf8' });
+    assert.ok(listing.includes('Physics/Diffusion/Notes on Diffusion.md'), listing);
+    const md = execFileSync('unzip', ['-p', zip, 'Physics/Diffusion/Notes on Diffusion.md'], { encoding: 'utf8' });
+    assert.ok(md.includes('> $$E = mc^2$$'));
+    assert.ok(md.includes('> ![Concentration profiles spreading over time](<data:image/svg+xml'));
+  });
+
+  await step('night mode toggle switches the library and the page sidebar', async () => {
+    await lib.getByRole('button', { name: 'Switch to night mode' }).click();
+    await eventually(async () => assert.equal(await lib.locator('#app').getAttribute('data-theme'), 'dark'));
+    await eventually(async () => assert.equal(await mp.locator('.g-root').getAttribute('data-theme'), 'dark'));
+    await lib.screenshot({ path: path.join(OUT, '10-library-night.png') });
+    await mp.screenshot({ path: path.join(OUT, '11-sidebar-night.png') });
+    await lib.getByRole('button', { name: 'Switch to light mode' }).click();
+    await eventually(async () => assert.equal(await lib.locator('#app').getAttribute('data-theme'), 'light'));
+    // Back to following the system for the rest of the run.
+    await sw.evaluate(async () => {
+      const { settings } = await chrome.storage.local.get('settings');
+      await chrome.storage.local.set({ settings: { ...settings, theme: 'system' } });
+    });
+    await eventually(async () => assert.equal(await mp.locator('.g-root').getAttribute('data-theme'), null));
   });
 
   await step('settings page renders and validates Notion input', async () => {

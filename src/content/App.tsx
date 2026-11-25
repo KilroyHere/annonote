@@ -1,9 +1,17 @@
 import { useEffect, useLayoutEffect, useReducer, useRef } from 'preact/hooks';
-import { displayQuote } from '../shared/quote';
 import { byPosition, type Annotation } from '../shared/types';
-import { AnnotationEditor, AutosaveTags, AutosaveTextarea, ColorDots, TagChips } from '../shared/ui/components';
+import {
+  AnnotationEditor,
+  AutosaveTags,
+  AutosaveTextarea,
+  ColorDots,
+  ColorFilter,
+  FolderPicker,
+  QuoteContent,
+  TagChips,
+} from '../shared/ui/components';
 import { IconClose, IconCopy, IconDownload, IconEdit, IconLibrary, IconNote, IconSend, Logo } from '../shared/ui/icons';
-import type { Controller, ToolbarState, ViewState } from './controller';
+import type { Controller, MediaButtonState, ToolbarState, ViewState } from './controller';
 
 function useController(c: Controller): ViewState {
   const [, force] = useReducer((n: number, _action: void) => n + 1, 0);
@@ -15,6 +23,7 @@ export function App({ c, root }: { c: Controller; root: ShadowRoot }) {
   const s = useController(c);
   return (
     <>
+      {s.media && !s.toolbar && <MediaButton c={c} m={s.media} />}
       {s.toolbar && <Toolbar c={c} pos={s.toolbar} />}
       {s.sidebarOpen && <Sidebar c={c} s={s} root={root} />}
       {s.toast && <ToastView c={c} s={s} />}
@@ -44,11 +53,30 @@ function Toolbar({ c, pos }: { c: Controller; pos: ToolbarState }) {
   );
 }
 
+function MediaButton({ c, m }: { c: Controller; m: MediaButtonState }) {
+  const keep = (e: Event) => e.preventDefault();
+  return (
+    <button
+      type="button"
+      class="g-media-btn"
+      style={{ left: `${m.x}px`, top: `${m.y}px` }}
+      title={m.existingId ? 'Open the note for this highlight' : m.kind === 'image' ? 'Highlight this image' : 'Highlight this equation'}
+      onMouseDown={keep}
+      onPointerDown={keep}
+      onClick={() => c.selectMedia()}
+    >
+      <IconNote size={13} />
+      {m.existingId ? 'Note' : 'Highlight'}
+    </button>
+  );
+}
+
 function Sidebar({ c, s, root }: { c: Controller; s: ViewState; root: ShadowRoot }) {
   const page = s.page;
   const annotations = page ? [...page.annotations].sort(byPosition) : [];
-  const found = annotations.filter((a) => !s.orphans.has(a.id));
-  const missing = annotations.filter((a) => s.orphans.has(a.id));
+  const shown = s.colorFilter ? annotations.filter((a) => a.color === s.colorFilter) : annotations;
+  const found = shown.filter((a) => !s.orphans.has(a.id));
+  const missing = shown.filter((a) => s.orphans.has(a.id));
   const hasContent = annotations.length > 0 || !!page?.pageNote.trim();
   const count = annotations.length === 1 ? '1 highlight' : `${annotations.length} highlights`;
 
@@ -103,16 +131,22 @@ function Sidebar({ c, s, root }: { c: Controller; s: ViewState; root: ShadowRoot
             onSave={(pageNote) => void c.updatePage({ pageNote })}
           />
           <AutosaveTags tags={page?.tags ?? []} label="Page tags" onSave={(tags) => void c.updatePage({ tags })} />
+          <FolderPicker value={page?.folder} folders={s.folders} label="Folder for this page" onChange={(folder) => void c.updatePage({ folder })} />
         </section>
 
         <section class="g-section">
-          <h2 class="g-label">Highlights</h2>
+          <div class="g-section-head">
+            <h2 class="g-label">Highlights</h2>
+            <ColorFilter annotations={annotations} value={s.colorFilter} onChange={(color) => c.setColorFilter(color)} />
+          </div>
           {found.length ? (
             <ol class="g-cards">
               {found.map((a) => (
                 <Card key={a.id} a={a} c={c} s={s} orphan={false} />
               ))}
             </ol>
+          ) : s.colorFilter && annotations.length ? (
+            <p class="g-muted">No highlights in this color.</p>
           ) : (
             <div class="g-empty">
               <p>
@@ -159,10 +193,12 @@ function Card({ a, c, s, orphan }: { a: Annotation; c: Controller; s: ViewState;
   return (
     <li ref={ref} class={`g-card g-card-${a.color}${focused ? ' is-focused' : ''}${orphan ? ' is-orphan' : ''}`}>
       {orphan ? (
-        <blockquote class="g-quote">{displayQuote(a)}</blockquote>
+        <blockquote class="g-quote">
+          <QuoteContent a={a} />
+        </blockquote>
       ) : (
         <button type="button" class="g-quote" title="Show on page" onClick={() => c.reveal(a.id)}>
-          {displayQuote(a)}
+          <QuoteContent a={a} />
         </button>
       )}
       {editing ? (

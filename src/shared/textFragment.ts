@@ -1,3 +1,5 @@
+import { mathPattern } from './quote';
+
 /**
  * Builds a URL text fragment (`#:~:text=`) so that opening the link scrolls to
  * and highlights the passage in Chromium-based browsers, without the extension.
@@ -23,7 +25,11 @@ function lastWords(text: string, n: number): string {
 export function textFragmentDirective(exact: string): string | null {
   // Text fragments cannot match across block boundaries with a single term,
   // so a quote spanning paragraphs becomes a start,end range.
+  // Math is shown as TeX in quotes but rendered differently on the page, so it can't be
+  // matched: treat each formula as a break and match the text around it.
   const lines = exact
+    .replace(mathPattern(), '\n')
+    .replace(/\uFFFC/g, '\n')
     .split(/\n+/)
     .map((l) => l.replace(/\s+/g, ' ').trim())
     .filter(Boolean);
@@ -36,6 +42,11 @@ export function textFragmentDirective(exact: string): string | null {
   const start = firstWords(first, WORDS_FOR_RANGE);
   const end = lastWords(last, WORDS_FOR_RANGE);
   return `text=${encodeTerm(start)},${encodeTerm(end)}`;
+}
+
+/** True if a quote has text a browser can find on the page (not only math or images). */
+export function hasTextFragment(exact: string): boolean {
+  return textFragmentDirective(exact) !== null;
 }
 
 export function textFragmentUrl(pageUrl: string, exact: string): string {

@@ -1,8 +1,10 @@
 import { render } from 'preact';
 import { useEffect, useState } from 'preact/hooks';
 import { send, type TabMessage, type TabStatus } from '../shared/messages';
+import { DEFAULT_SETTINGS, type Settings } from '../shared/types';
 import componentsCss from '../shared/ui/components.css';
 import { IconLibrary, IconNote, Logo } from '../shared/ui/icons';
+import { applyPageTheme } from '../shared/ui/theme';
 import popupCss from './popup.css';
 
 type State = { kind: 'loading' } | { kind: 'ready'; tabId: number; status: TabStatus } | { kind: 'unsupported' };
@@ -75,4 +77,8 @@ function Popup() {
 const style = document.createElement('style');
 style.textContent = componentsCss + popupCss;
 document.head.appendChild(style);
-render(<Popup />, document.getElementById('app')!);
+const app = document.getElementById('app')!;
+void chrome.storage.local.get('settings').then(({ settings }) => {
+  applyPageTheme(app, { ...DEFAULT_SETTINGS, ...(settings as Partial<Settings> | undefined) }.theme);
+});
+render(<Popup />, app);

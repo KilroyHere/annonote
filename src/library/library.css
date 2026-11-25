@@ -11,6 +11,7 @@ body {
 #app {
   min-height: 100vh;
   font-size: 14px;
+  background: var(--g-bg-sunken);
 }
 
 a {
@@ -139,14 +140,178 @@ code {
   color: var(--g-text-muted);
 }
 
-.l-color-filter {
+/* Folders ---------------------------------------------------------------- */
+.l-label-row {
   display: flex;
-  gap: 8px;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 10px;
 }
 
-.l-color-filter .g-dot {
+.l-filters .l-label-row .g-label {
+  margin-top: 0;
+}
+
+.g-icon-btn.l-mini {
   width: 22px;
   height: 22px;
+  padding: 0;
+}
+
+.l-folder-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.l-folder-item {
+  position: relative;
+}
+
+.l-folder {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  width: 100%;
+  font: inherit;
+  color: var(--g-text);
+  background: none;
+  border: 1px dashed transparent;
+  border-radius: 7px;
+  padding: 5px 8px;
+  cursor: pointer;
+  text-align: left;
+}
+
+.l-folder svg {
+  flex-shrink: 0;
+  color: var(--g-text-muted);
+}
+
+.l-folder-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.l-folder:hover {
+  background: var(--g-bg-hover);
+}
+
+.l-folder.is-active {
+  background: var(--g-accent);
+  color: var(--g-accent-text);
+}
+
+.l-folder.is-active svg,
+.l-folder.is-active .g-muted {
+  color: inherit;
+}
+
+.l-folder.is-drop {
+  border-color: var(--g-focus);
+  background: color-mix(in srgb, var(--g-focus) 14%, transparent);
+}
+
+.l-folder-actions {
+  position: absolute;
+  right: 26px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: none;
+  gap: 1px;
+  background: var(--g-bg-hover);
+  border-radius: 6px;
+}
+
+.l-folder-item:hover .l-folder-actions,
+.l-folder-actions:focus-within {
+  display: flex;
+}
+
+.l-folder-item:has(.l-folder.is-active) .l-folder-actions {
+  background: var(--g-accent);
+  color: var(--g-accent-text);
+}
+
+.l-folder-form {
+  margin: 2px 0;
+}
+
+.l-folder-form .g-input {
+  width: 100%;
+  padding: 5px 8px;
+}
+
+/* Page card tools: folder picker and color filter */
+.l-page-head[draggable='true'] {
+  cursor: grab;
+}
+
+.l-page-tools {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 8px;
+}
+
+.l-folder-pick {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--g-text-muted);
+}
+
+.l-folder-pick .g-select {
+  font-size: 12.5px;
+  padding: 3px 6px;
+  max-width: 220px;
+}
+
+.l-folder-pick .g-folder-new .g-input {
+  font-size: 12.5px;
+  padding: 3px 6px;
+  width: 200px;
+}
+
+.l-folder-pick .g-folder-new .g-btn {
+  padding: 3px 8px;
+}
+
+/* Appearance setting */
+.l-theme-choice {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.l-theme-option {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 12px;
+  border: 1px solid var(--g-border-strong);
+  border-radius: 9px;
+  cursor: pointer;
+}
+
+.l-theme-option input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.l-theme-option.is-active {
+  border-color: var(--g-accent);
+  box-shadow: 0 0 0 1px var(--g-accent);
+}
+
+.l-theme-option:focus-within {
+  outline: 2px solid var(--g-focus);
+  outline-offset: 2px;
 }
 
 .l-tag-list {

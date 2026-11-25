@@ -1,4 +1,4 @@
-import type { Annotation, NotionState, Page, PageMeta } from './types';
+import type { Annotation, NotionState, Page, PageMeta, Theme } from './types';
 
 /** Requests handled by the background service worker. */
 export type Request =
@@ -11,13 +11,19 @@ export type Request =
   | { type: 'page:setNotion'; pageKey: string; notion: NotionState | null }
   | { type: 'pages:list' }
   | { type: 'pages:import'; pages: Page[] }
+  | { type: 'folders:list' }
+  | { type: 'folder:add'; path: string }
+  | { type: 'folder:rename'; from: string; to: string }
+  | { type: 'folder:delete'; path: string }
+  | { type: 'pages:move'; pageKeys: string[]; folder: string }
   | { type: 'notion:sync'; pageKey: string }
   | { type: 'settings:public' }
   | { type: 'library:open'; pageKey?: string; view?: 'settings' }
   | { type: 'badge'; count: number };
 
 export type AnnotationPatch = Partial<Pick<Annotation, 'note' | 'tags' | 'color'>>;
-export type PagePatch = Partial<Pick<Page, 'pageNote' | 'tags' | 'title'>>;
+/** `folder: ''` takes the page out of its folder. */
+export type PagePatch = Partial<Pick<Page, 'pageNote' | 'tags' | 'title' | 'folder'>>;
 
 export interface ImportResult {
   pages: number;
@@ -28,6 +34,7 @@ export interface ImportResult {
 export interface PublicSettings {
   highlightLinks: boolean;
   notionConfigured: boolean;
+  theme: Theme;
 }
 
 export interface ResponseMap {
@@ -40,6 +47,11 @@ export interface ResponseMap {
   'page:setNotion': Page | null;
   'pages:list': Page[];
   'pages:import': ImportResult;
+  'folders:list': string[];
+  'folder:add': string[];
+  'folder:rename': string[];
+  'folder:delete': string[];
+  'pages:move': null;
   'notion:sync': { url?: string };
   'settings:public': PublicSettings;
   'library:open': null;
