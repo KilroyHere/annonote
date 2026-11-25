@@ -7,6 +7,7 @@ import {
   ColorDots,
   ColorFilter,
   FolderPicker,
+  NoteText,
   QuoteContent,
   TagChips,
 } from '../shared/ui/components';
@@ -215,7 +216,11 @@ function Card({ a, c, s, orphan }: { a: Annotation; c: Controller; s: ViewState;
         />
       ) : (
         <>
-          {a.note.trim() && <p class="g-note">{a.note}</p>}
+          {a.note.trim() && (
+            <p class="g-note">
+              <NoteText note={a.note} />
+            </p>
+          )}
           <TagChips tags={a.tags} />
           <div class="g-card-actions">
             <button type="button" class="g-link-btn" onClick={() => c.setEditing(a.id)}>

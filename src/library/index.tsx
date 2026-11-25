@@ -7,7 +7,7 @@ import { NotionClient, ensureSchema, parseDatabaseId, syncPageToNotion, testConn
 import { displayQuote } from '../shared/quote';
 import { hasTextFragment, textFragmentUrl } from '../shared/textFragment';
 import { DEFAULT_SETTINGS, THEMES, normalizeFolder, type Annotation, type Color, type Page, type Settings, type Theme } from '../shared/types';
-import { AnnotationEditor, ColorFilter, FolderPicker, QuoteContent, TagChips, folderLabel } from '../shared/ui/components';
+import { AnnotationEditor, ColorFilter, FolderPicker, NoteText, QuoteContent, TagChips, folderLabel } from '../shared/ui/components';
 import componentsCss from '../shared/ui/components.css';
 import {
   IconCopy,
@@ -693,7 +693,7 @@ function PageCard({
       {visible.length > 0 && (
         <ol class="l-anns">
           {visible.map((a) => (
-            <li key={a.id} class={`l-ann g-card-${a.color}`}>
+            <li key={a.id} class={`l-ann g-card-${a.color}${editing === a.id ? ' is-editing' : ''}`}>
               <blockquote class="l-quote">
                 <QuoteContent a={a} />
                 {settings.highlightLinks && hasTextFragment(displayQuote(a)) && (
@@ -723,15 +723,16 @@ function PageCard({
                 />
               ) : (
                 <>
-                  {a.note.trim() && <p class="l-note">{a.note}</p>}
-                  <div class="l-ann-foot">
-                    <TagChips tags={a.tags} onTag={onTag} />
-                    <span class="g-spacer" />
-                    <button type="button" class="g-link-btn" onClick={() => setEditing(a.id)}>
-                      <IconEdit size={13} />
-                      Edit
-                    </button>
-                  </div>
+                  {a.note.trim() && (
+                    <p class="l-note">
+                      <NoteText note={a.note} />
+                    </p>
+                  )}
+                  <TagChips tags={a.tags} onTag={onTag} />
+                  <button type="button" class="g-link-btn l-ann-edit" onClick={() => setEditing(a.id)}>
+                    <IconEdit size={13} />
+                    Edit
+                  </button>
                 </>
               )}
             </li>

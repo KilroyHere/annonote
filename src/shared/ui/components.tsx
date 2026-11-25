@@ -1,3 +1,4 @@
+import { Fragment } from 'preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { displayQuote, splitMath } from '../quote';
 import { COLORS, normalizeFolder, parseTags, type Annotation, type Color } from '../types';
@@ -241,7 +242,14 @@ export function QuoteContent({ a }: { a: Annotation }) {
               {part.text}
             </code>
           ) : (
-            <span key={i}>{part.text}</span>
+            <span key={i}>
+              {part.text.split(/\n[ \t]*\n\s*/).map((para, j) => (
+                <Fragment key={j}>
+                  {j > 0 && <span class="g-para-break" />}
+                  {para}
+                </Fragment>
+              ))}
+            </span>
           ),
         )}
       {!!a.images?.length && (
@@ -257,6 +265,23 @@ export function QuoteContent({ a }: { a: Annotation }) {
           )}
         </span>
       )}
+    </>
+  );
+}
+
+/** Note text with paragraph breaks shown as a small gap rather than a full blank line. */
+export function NoteText({ note }: { note: string }) {
+  return (
+    <>
+      {note
+        .trim()
+        .split(/\n[ \t]*\n\s*/)
+        .map((para, i) => (
+          <Fragment key={i}>
+            {i > 0 && <span class="g-para-break" />}
+            {para}
+          </Fragment>
+        ))}
     </>
   );
 }
