@@ -250,10 +250,12 @@
   border: 0;
   background: none;
   font: inherit;
+  /* The quote is the quieter voice (italic, muted); your note below is the louder one. */
   font-family: Georgia, 'Iowan Old Style', 'Times New Roman', serif;
-  font-size: 13.5px;
+  font-style: italic;
+  font-size: 13px;
   line-height: 1.5;
-  color: var(--g-text);
+  color: var(--g-text-muted);
   text-align: left;
   white-space: pre-line;
   cursor: pointer;
@@ -267,10 +269,16 @@ blockquote.g-quote {
   color: var(--g-text-muted);
 }
 
+.g-quote:hover {
+  color: var(--g-text);
+}
+
 .g-note {
-  margin: 8px 0 0;
-  padding-top: 8px;
-  border-top: 1px solid var(--g-border);
+  margin: 7px 0 0;
+  font-size: 13.5px;
+  font-weight: 500;
+  line-height: 1.45;
+  color: var(--g-text);
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }

@@ -222,10 +222,20 @@ export function AutosaveTags({ tags, onSave, label = 'Tags' }: { tags: string[];
 /** A highlight's quote: text with math set apart (as TeX) and thumbnails for images. */
 export function QuoteContent({ a }: { a: Annotation }) {
   const quote = displayQuote(a);
+  // Display equations are blocks, so the line breaks around them would only add blank lines.
+  const parts = splitMath(quote)
+    .map((part, i, all) => {
+      if (part.math) return part;
+      let text = part.text;
+      if (i === 0 || all[i - 1]!.display) text = text.replace(/^\s+/, '');
+      if (i === all.length - 1 || all[i + 1]!.display) text = text.replace(/\s+$/, '');
+      return { ...part, text };
+    })
+    .filter((part) => part.math || part.text);
   return (
     <>
       {quote &&
-        splitMath(quote).map((part, i) =>
+        parts.map((part, i) =>
           part.math ? (
             <code key={i} class={`g-math${part.display ? ' is-display' : ''}`} title="TeX">
               {part.text}
