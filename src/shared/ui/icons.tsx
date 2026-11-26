@@ -57,6 +57,7 @@ export const IconSettings = (p: IconProps) =>
 export const IconFolder = (p: IconProps) => svg(<path d="M3 6a1 1 0 0 1 1-1h5l2 2h9a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1Z" />, p);
 export const IconInbox = (p: IconProps) => svg(<path d="M3 13h5l1 3h6l1-3h5M5 5h14l2 8v6H3v-6Z" />, p);
 export const IconStack = (p: IconProps) => svg(<path d="m12 3 9 5-9 5-9-5ZM3 13l9 5 9-5" />, p);
+export const IconTag = (p: IconProps) => svg(<path d="M3 12V4a1 1 0 0 1 1-1h8l9 9-9 9ZM8 8h.01" />, p);
 export const IconPlus = (p: IconProps) => svg(<path d="M12 5v14M5 12h14" />, p);
 export const IconMoon = (p: IconProps) => svg(<path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5Z" />, p);
 export const IconSun = (p: IconProps) =>

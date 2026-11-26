@@ -3,15 +3,13 @@ import { byPosition, type Annotation } from '../shared/types';
 import {
   AnnotationEditor,
   AutosaveTags,
-  AutosaveTextarea,
   ColorDots,
   ColorFilter,
   FolderPicker,
   NoteText,
   QuoteContent,
-  TagChips,
 } from '../shared/ui/components';
-import { IconClose, IconCopy, IconDownload, IconEdit, IconLibrary, IconNote, IconSend, Logo } from '../shared/ui/icons';
+import { IconClose, IconCopy, IconDownload, IconEdit, IconFolder, IconLibrary, IconNote, IconSend, IconTag, Logo } from '../shared/ui/icons';
 import type { Controller, MediaButtonState, ToolbarState, ViewState } from './controller';
 
 function useController(c: Controller): ViewState {
@@ -78,7 +76,7 @@ function Sidebar({ c, s, root }: { c: Controller; s: ViewState; root: ShadowRoot
   const shown = s.colorFilter ? annotations.filter((a) => a.color === s.colorFilter) : annotations;
   const found = shown.filter((a) => !s.orphans.has(a.id));
   const missing = shown.filter((a) => s.orphans.has(a.id));
-  const hasContent = annotations.length > 0 || !!page?.pageNote.trim();
+  const hasContent = annotations.length > 0;
   const count = annotations.length === 1 ? '1 highlight' : `${annotations.length} highlights`;
 
   return (
@@ -123,21 +121,25 @@ function Sidebar({ c, s, root }: { c: Controller; s: ViewState; root: ShadowRoot
       </div>
 
       <div class="g-side-body">
-        <section class="g-section">
-          <h2 class="g-label">Page note</h2>
-          <AutosaveTextarea
-            value={page?.pageNote ?? ''}
-            label="Page note"
-            placeholder="Thoughts about this page as a whole…"
-            onSave={(pageNote) => void c.updatePage({ pageNote })}
-          />
-          <AutosaveTags tags={page?.tags ?? []} label="Page tags" onSave={(tags) => void c.updatePage({ tags })} />
-          <FolderPicker value={page?.folder} folders={s.folders} label="Folder for this page" onChange={(folder) => void c.updatePage({ folder })} />
+        <section class="g-page-meta" aria-label="This page">
+          <label class="g-meta-row" title="Folder">
+            <IconFolder size={15} />
+            <FolderPicker value={page?.folder} folders={s.folders} label="Folder for this page" onChange={(folder) => void c.updatePage({ folder })} />
+          </label>
+          <label class="g-meta-row" title="Tags">
+            <IconTag size={15} />
+            <AutosaveTags
+              tags={page?.tags ?? []}
+              label="Page tags"
+              placeholder="Tags for this page, separated by commas"
+              onSave={(tags) => void c.updatePage({ tags })}
+            />
+          </label>
         </section>
 
         <section class="g-section">
           <div class="g-section-head">
-            <h2 class="g-label">Highlights</h2>
+            <h2 class="g-label">Highlights and notes</h2>
             <ColorFilter annotations={annotations} value={s.colorFilter} onChange={(color) => c.setColorFilter(color)} />
           </div>
           {found.length ? (
@@ -205,7 +207,6 @@ function Card({ a, c, s, orphan }: { a: Annotation; c: Controller; s: ViewState;
       {editing ? (
         <AnnotationEditor
           note={a.note}
-          tags={a.tags}
           color={a.color}
           onSave={(patch) => {
             c.setEditing(null);
@@ -221,11 +222,10 @@ function Card({ a, c, s, orphan }: { a: Annotation; c: Controller; s: ViewState;
               <NoteText note={a.note} />
             </p>
           )}
-          <TagChips tags={a.tags} />
           <div class="g-card-actions">
             <button type="button" class="g-link-btn" onClick={() => c.setEditing(a.id)}>
               <IconEdit size={13} />
-              {a.note.trim() || a.tags.length ? 'Edit' : 'Add note'}
+              {a.note.trim() ? 'Edit' : 'Add note'}
             </button>
           </div>
         </>

@@ -202,13 +202,12 @@ async function storedPages(sw) {
     const editor = page.locator('.g-editor');
     await editor.waitFor();
     await editor.getByLabel('Note').fill('This is the key mechanism: a helical flow.\n\nCompare with the Coriolis effect?');
-    await editor.getByLabel('Tags').fill('geology, #to-read');
     await editor.getByRole('button', { name: 'Save' }).click();
     await eventually(async () => {
       const [p] = await storedPages(sw);
       const a = p.annotations.find((x) => x.note.startsWith('This is the key'));
       assert.ok(a, 'note saved');
-      assert.deepEqual(a.tags, ['geology', 'to-read']);
+      assert.deepEqual(a.tags, []);
     });
     await page.locator('.g-card .g-note').filter({ hasText: 'key mechanism' }).waitFor();
   });
@@ -220,17 +219,17 @@ async function storedPages(sw) {
     await eventually(async () => assert.equal((await highlightCounts(page))['annonote-pink'], 1));
   });
 
-  await step('page note and page tags save', async () => {
-    const note = page.getByLabel('Page note');
-    await note.fill('Good intro to fluvial geomorphology.');
-    await page.getByLabel('Page tags').fill('rivers');
+  await step('the sidebar has page tags and a folder, but no page note or per-highlight tags', async () => {
+    assert.equal(await page.getByLabel('Page note').count(), 0);
+    await page.getByLabel('Page tags').fill('rivers, geology, #to-read');
     await page.getByLabel('Page tags').press('Enter');
-    await note.blur();
     await eventually(async () => {
       const [p] = await storedPages(sw);
-      assert.equal(p.pageNote, 'Good intro to fluvial geomorphology.');
-      assert.deepEqual(p.tags, ['rivers']);
+      assert.deepEqual(p.tags, ['rivers', 'geology', 'to-read']);
     });
+    await page.locator('.g-card').filter({ hasText: 'key mechanism' }).getByRole('button', { name: 'Edit' }).click();
+    assert.equal(await page.locator('.g-editor').getByLabel('Tags').count(), 0);
+    await page.locator('.g-editor').getByRole('button', { name: 'Cancel' }).click();
   });
 
   await step('sidebar lists highlights in page order', async () => {
@@ -253,7 +252,8 @@ async function storedPages(sw) {
     assert.ok(md.includes('tags: ["geology", "rivers", "to-read"]'));
     assert.ok(md.includes('> The outside of each curve erodes while the inside collects sand and gravel'));
     assert.ok(md.includes('#:~:text=The%20outside%20of%20each%20curve'));
-    assert.ok(md.includes('This is the key mechanism: a helical flow.\n\nCompare with the Coriolis effect?\n\n#geology #to-read'));
+    assert.ok(md.includes('This is the key mechanism: a helical flow.\n\nCompare with the Coriolis effect?'));
+    assert.ok(md.includes('#rivers #geology #to-read'));
     fs.writeFileSync(path.join(OUT, 'sidebar-export.md'), md);
   });
 
@@ -366,12 +366,14 @@ async function storedPages(sw) {
 
   await step('tag filter', async () => {
     await lib.locator('.l-tag-filter', { hasText: '#geology' }).click();
-    await eventually(async () => assert.equal(await lib.locator('.l-ann').count(), 1));
+    // Tags are on pages: the tagged page is shown with all its highlights.
+    await eventually(async () => assert.equal(await lib.locator('.l-page').count(), 1));
+    assert.equal(await lib.locator('.l-ann').count(), 3);
     await lib.getByRole('button', { name: 'Clear filters' }).click();
   });
 
   await step('editing a note in the library updates the open page', async () => {
-    const card = lib.locator('.l-page', { hasText: 'Good intro' }).locator('.l-ann').filter({ hasText: 'The outside of each curve' });
+    const card = lib.locator('.l-page', { hasText: 'oxbow lake' }).locator('.l-ann').filter({ hasText: 'The outside of each curve' });
     await card.getByRole('button', { name: 'Edit' }).click();
     await card.getByLabel('Note').fill('Erosion on the outside, deposition inside.');
     await card.getByRole('button', { name: 'Save' }).click();
@@ -401,7 +403,7 @@ async function storedPages(sw) {
 
   await step('deleting a page, then restoring it from the backup', async () => {
     lib.once('dialog', (d) => d.accept());
-    await lib.locator('.l-page', { hasText: 'Good intro' }).getByRole('button', { name: 'Delete page and its highlights' }).click();
+    await lib.locator('.l-page', { hasText: 'oxbow lake' }).getByRole('button', { name: 'Delete page and its highlights' }).click();
     await eventually(async () => assert.equal(await lib.locator('.l-page').count(), 1));
     await eventually(async () => assert.equal(Object.keys(await highlightCounts(page)).length, 0));
     await lib.locator('input[type=file]').setInputFiles(backupPath);
@@ -523,8 +525,8 @@ async function storedPages(sw) {
     await lib.getByLabel('Folder name').press('Enter');
     const target = lib.locator('.l-folder', { hasText: 'Geology' });
     await target.waitFor();
-    await lib.locator('.l-page', { hasText: 'Good intro' }).locator('.l-page-head').dragTo(target);
-    await eventually(async () => assert.equal((await storedPages(sw)).find((p) => p.pageNote.startsWith('Good intro')).folder, 'Geology'));
+    await lib.locator('.l-page', { hasText: 'oxbow lake' }).locator('.l-page-head').dragTo(target);
+    await eventually(async () => assert.equal((await storedPages(sw)).find((p) => p.key === `${origin}/article`).folder, 'Geology'));
     await target.click();
     await lib.locator('.l-tag-filter', { hasText: '#geology' }).click();
     await eventually(async () => assert.equal(await lib.locator('.l-page').count(), 1));
@@ -537,11 +539,11 @@ async function storedPages(sw) {
     await lib.getByRole('button', { name: 'Rename folder Geology' }).click();
     await lib.getByLabel('Folder name').fill('Earth');
     await lib.getByLabel('Folder name').press('Enter');
-    await eventually(async () => assert.equal((await storedPages(sw)).find((p) => p.pageNote.startsWith('Good intro')).folder, 'Earth'));
+    await eventually(async () => assert.equal((await storedPages(sw)).find((p) => p.key === `${origin}/article`).folder, 'Earth'));
     lib.once('dialog', (d) => d.accept());
     await lib.locator('.l-folder-item', { hasText: 'Earth' }).hover();
     await lib.getByRole('button', { name: 'Delete folder Earth' }).click();
-    await eventually(async () => assert.equal((await storedPages(sw)).find((p) => p.pageNote.startsWith('Good intro')).folder, undefined));
+    await eventually(async () => assert.equal((await storedPages(sw)).find((p) => p.key === `${origin}/article`).folder, undefined));
     assert.equal(await lib.locator('.l-page').count(), 3);
   });
 

@@ -107,6 +107,7 @@ chrome.commands.onCommand.addListener((command, tab) => {
 });
 
 chrome.runtime.onInstalled.addListener(() => {
+  void db.migrate().catch((err: unknown) => console.warn('[Annonote] migration failed:', err));
   chrome.action.setBadgeBackgroundColor({ color: '#3b3b46' });
   chrome.action.setBadgeTextColor?.({ color: '#ffffff' });
 });

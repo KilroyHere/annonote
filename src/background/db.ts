@@ -80,7 +80,23 @@ export async function findPage(meta: PageMeta): Promise<Page | undefined> {
   return undefined;
 }
 
+/**
+ * Tags belong to pages, not to single highlights. Tags from older versions or imports
+ * (Hypothesis tags each annotation) are moved up to the page.
+ */
+export function liftTags(page: Page): boolean {
+  let changed = false;
+  for (const a of page.annotations) {
+    if (!a.tags?.length) continue;
+    for (const t of a.tags) if (!page.tags.includes(t)) page.tags.push(t);
+    a.tags = [];
+    changed = true;
+  }
+  return changed;
+}
+
 async function putPage(page: Page): Promise<void> {
+  liftTags(page);
   const idx = await getIndex();
   idx[page.key] = { canonical: page.canonical, doi: page.doi };
   await storage().set({ [PAGE_PREFIX + page.key]: page, [INDEX_KEY]: idx });
@@ -153,7 +169,6 @@ export function updateAnnotation(pageKey: string, id: string, patch: AnnotationP
     const a = page?.annotations.find((x) => x.id === id);
     if (!page || !a) return null;
     if (patch.note !== undefined) a.note = patch.note;
-    if (patch.tags !== undefined) a.tags = patch.tags;
     if (patch.color !== undefined) a.color = patch.color;
     a.updated = page.updated = nowIso();
     await putPage(page);
@@ -359,5 +374,19 @@ export function movePages(pageKeys: string[], folder: string): Promise<void> {
       setFolder(page, folder);
       await putPage(page);
     }
+  });
+}
+
+/** One-time upgrade of stored pages: highlight tags become page tags. */
+export function migrate(): Promise<number> {
+  return withLock(async () => {
+    let changed = 0;
+    for (const page of await listPages()) {
+      if (page.annotations.some((a) => a.tags?.length)) {
+        await putPage(page);
+        changed++;
+      }
+    }
+    return changed;
   });
 }

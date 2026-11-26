@@ -127,6 +127,19 @@ describe('folder storage', () => {
     expect((await db.getPage('https://x.test/a'))!.folder).toBeUndefined();
   });
 
+  it('tags on highlights (older data, imports) move up to the page', async () => {
+    const saved = await db.saveAnnotation({ url: 'https://x.test/t', title: 'T' }, undefined, ann('t', { tags: ['ml', 'to-read'] }));
+    expect(saved.tags).toEqual(['ml', 'to-read']);
+    expect(saved.annotations[0]!.tags).toEqual([]);
+    // A page stored by an older version is upgraded once.
+    store['page:https://x.test/old'] = page('https://x.test/old', { tags: ['a'], annotations: [ann('o', { tags: ['a', 'b'] })] });
+    expect(await db.migrate()).toBe(1);
+    const old = (await db.getPage('https://x.test/old'))!;
+    expect(old.tags).toEqual(['a', 'b']);
+    expect(old.annotations[0]!.tags).toEqual([]);
+    expect(await db.migrate()).toBe(0);
+  });
+
   it('a page can be filed before it has highlights, and is kept', async () => {
     const saved = await db.updatePage(undefined, { url: 'https://x.test/new', title: 'New' }, { folder: 'Inbox' });
     expect(saved?.folder).toBe('Inbox');

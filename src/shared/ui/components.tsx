@@ -57,10 +57,9 @@ export function TagChips({ tags, onTag }: { tags: string[]; onTag?: (t: string) 
   );
 }
 
-/** Note + tags + color editor for one highlight. Ctrl/⌘+Enter saves, Esc cancels. */
+/** Note + color editor for one highlight (tags belong to the page). Ctrl/⌘+Enter saves, Esc cancels. */
 export function AnnotationEditor({
   note,
-  tags,
   color,
   autoFocus = true,
   onSave,
@@ -68,15 +67,13 @@ export function AnnotationEditor({
   onDelete,
 }: {
   note: string;
-  tags: string[];
   color: Color;
   autoFocus?: boolean;
-  onSave: (patch: { note: string; tags: string[]; color: Color }) => void;
+  onSave: (patch: { note: string; color: Color }) => void;
   onCancel: () => void;
   onDelete: () => void;
 }) {
   const [draft, setDraft] = useState(note);
-  const [tagText, setTagText] = useState(tags.join(', '));
   const [draftColor, setDraftColor] = useState<Color>(color);
   const [confirming, setConfirming] = useState(false);
   const textRef = useRef<HTMLTextAreaElement>(null);
@@ -89,7 +86,7 @@ export function AnnotationEditor({
     }
   }, [autoFocus]);
 
-  const save = () => onSave({ note: draft, tags: parseTags(tagText), color: draftColor });
+  const save = () => onSave({ note: draft, color: draftColor });
   const onKeyDown = (e: KeyboardEvent) => {
     e.stopPropagation(); // keep the page's own keyboard shortcuts out of the editor
     if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
@@ -111,13 +108,6 @@ export function AnnotationEditor({
         placeholder="Add a note…"
         value={draft}
         onInput={(e) => setDraft(e.currentTarget.value)}
-      />
-      <input
-        aria-label="Tags"
-        class="g-input"
-        placeholder="Tags, separated by commas"
-        value={tagText}
-        onInput={(e) => setTagText(e.currentTarget.value)}
       />
       <div class="g-editor-row">
         <ColorDots value={draftColor} onPick={setDraftColor} />
@@ -185,7 +175,17 @@ export function AutosaveTextarea({
 }
 
 /** A tags input that saves when it loses focus or on Enter. */
-export function AutosaveTags({ tags, onSave, label = 'Tags' }: { tags: string[]; onSave: (t: string[]) => void; label?: string }) {
+export function AutosaveTags({
+  tags,
+  onSave,
+  label = 'Tags',
+  placeholder = 'Page tags, separated by commas',
+}: {
+  tags: string[];
+  onSave: (t: string[]) => void;
+  label?: string;
+  placeholder?: string;
+}) {
   const joined = tags.join(', ');
   const [draft, setDraft] = useState(joined);
   const [focused, setFocused] = useState(false);
@@ -200,7 +200,7 @@ export function AutosaveTags({ tags, onSave, label = 'Tags' }: { tags: string[];
     <input
       class="g-input"
       aria-label={label}
-      placeholder="Page tags, separated by commas"
+      placeholder={placeholder}
       value={draft}
       onFocus={() => setFocused(true)}
       onInput={(e) => setDraft(e.currentTarget.value)}

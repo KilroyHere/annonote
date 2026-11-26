@@ -258,6 +258,10 @@ code {
   margin-top: 8px;
 }
 
+.l-page-tools .g-tags {
+  margin: 0;
+}
+
 .l-folder-pick {
   display: inline-flex;
   align-items: center;
@@ -437,6 +441,10 @@ code {
 .l-page-note p {
   margin: 0;
   white-space: pre-wrap;
+}
+
+.l-page-note .g-link-btn {
+  margin-top: 6px;
 }
 
 .l-anns {

@@ -21,7 +21,8 @@ export type Request =
   | { type: 'library:open'; pageKey?: string; view?: 'settings' }
   | { type: 'badge'; count: number };
 
-export type AnnotationPatch = Partial<Pick<Annotation, 'note' | 'tags' | 'color'>>;
+/** Highlights have a note and a color; tags live on the page. */
+export type AnnotationPatch = Partial<Pick<Annotation, 'note' | 'color'>>;
 /** `folder: ''` takes the page out of its folder. */
 export type PagePatch = Partial<Pick<Page, 'pageNote' | 'tags' | 'title' | 'folder'>>;
 

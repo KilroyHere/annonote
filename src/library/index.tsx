@@ -347,7 +347,7 @@ function App() {
                 ))}
               </ul>
             ) : (
-              <p class="g-muted l-small">{folder === null ? 'Tags you add to highlights show up here.' : 'No tags in this folder yet.'}</p>
+              <p class="g-muted l-small">{folder === null ? 'Tags you add to pages show up here.' : 'No tags in this folder yet.'}</p>
             )}
           </aside>
 
@@ -662,6 +662,7 @@ function PageCard({
               <IconFolder size={13} />
               <FolderPicker value={page.folder} folders={folders} label="Folder for this page" onChange={onMove} />
             </label>
+            <TagChips tags={page.tags} onTag={onTag} />
             <ColorFilter annotations={annotations} value={color} onChange={setColor} />
           </div>
         </div>
@@ -683,10 +684,17 @@ function PageCard({
         </div>
       </header>
 
-      {(page.pageNote.trim() || page.tags.length > 0) && (
+      {page.pageNote.trim() && (
+        // Page notes are no longer added, but ones saved earlier (or imported) are kept and shown.
         <div class="l-page-note">
-          {page.pageNote.trim() && <p>{page.pageNote}</p>}
-          <TagChips tags={page.tags} onTag={onTag} />
+          <p>{page.pageNote}</p>
+          <button
+            type="button"
+            class="g-link-btn l-small"
+            onClick={() => void send({ type: 'page:update', pageKey: page.key, patch: { pageNote: '' } })}
+          >
+            Remove page note
+          </button>
         </div>
       )}
 
@@ -712,7 +720,6 @@ function PageCard({
               {editing === a.id ? (
                 <AnnotationEditor
                   note={a.note}
-                  tags={a.tags}
                   color={a.color}
                   onSave={(patch) => {
                     setEditing(null);
@@ -728,7 +735,6 @@ function PageCard({
                       <NoteText note={a.note} />
                     </p>
                   )}
-                  <TagChips tags={a.tags} onTag={onTag} />
                   <button type="button" class="g-link-btn l-ann-edit" onClick={() => setEditing(a.id)}>
                     <IconEdit size={13} />
                     Edit
